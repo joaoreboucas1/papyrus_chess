@@ -18,8 +18,8 @@ typedef int Row;
 typedef struct {
     PieceType type;
     Player player;
-    Column col;
     Row row;
+    Column col;
 } Piece;
 
 #define board_at(row, col) board[row - 1][col]
@@ -27,10 +27,30 @@ void initialize_board(Piece board[8][8])
 {
     for (int row = 1; row <= 8; row++) {
         for (int col = A; col <= H; col++) {
-            board_at(row, col) = (Piece) {.type = EMPTY, .player = NONE, .col = col, .row = row};
+            board_at(row, col) = (Piece) {.type = EMPTY, .player = NONE, .row = row, .col = col};
         }
     }
+    for (int col = A; col <= H; col++) {
+        board_at(2, col) = (Piece) {.type = PAWN, .player = WH, .row = 2, .col = col};
+        board_at(7, col) = (Piece) {.type = PAWN, .player = BL, .row = 7, .col = col};
+    }
     board_at(1, A) = (Piece) {.type = ROOK, .player = WH, .col = A, .row = 1};
+    board_at(1, B) = (Piece) {.type = KNIGHT, .player = WH, .col = B, .row = 1};
+    board_at(1, C) = (Piece) {.type = BISHOP, .player = WH, .col = C, .row = 1};
+    board_at(1, D) = (Piece) {.type = QUEEN, .player = WH, .col = D, .row = 1};
+    board_at(1, E) = (Piece) {.type = KING, .player = WH, .col = E, .row = 1};
+    board_at(1, F) = (Piece) {.type = BISHOP, .player = WH, .col = F, .row = 1};
+    board_at(1, G) = (Piece) {.type = KNIGHT, .player = WH, .col = G, .row = 1};
+    board_at(1, H) = (Piece) {.type = ROOK, .player = WH, .col = H, .row = 1};
+
+    board_at(8, A) = (Piece) {.type = ROOK, .player = BL, .col = A, .row = 1};
+    board_at(8, B) = (Piece) {.type = KNIGHT, .player = BL, .col = B, .row = 1};
+    board_at(8, C) = (Piece) {.type = BISHOP, .player = BL, .col = C, .row = 1};
+    board_at(8, D) = (Piece) {.type = QUEEN, .player = BL, .col = D, .row = 1};
+    board_at(8, E) = (Piece) {.type = KING, .player = BL, .col = E, .row = 1};
+    board_at(8, F) = (Piece) {.type = BISHOP, .player = BL, .col = F, .row = 1};
+    board_at(8, G) = (Piece) {.type = KNIGHT, .player = BL, .col = G, .row = 1};
+    board_at(8, H) = (Piece) {.type = ROOK, .player = BL, .col = H, .row = 1};
 }
 
 int main(void)
