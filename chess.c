@@ -1,5 +1,11 @@
 #include <stdio.h>
 #include <raylib.h>
+#include <stdlib.h>
+
+#define BOARD_SIZE 800
+#define SCREEN_HORIZ_PAD 400
+#define SCREEN_HEIGHT BOARD_SIZE
+#define SCREEN_WIDTH (BOARD_SIZE + SCREEN_HORIZ_PAD)
 
 typedef enum {
     WH, BL, NONE
@@ -25,8 +31,8 @@ typedef struct {
 #define board_at(row, col) board[row - 1][col]
 void initialize_board(Piece board[8][8])
 {
-    for (int row = 1; row <= 8; row++) {
-        for (int col = A; col <= H; col++) {
+    for (Row row = 1; row <= 8; row++) {
+        for (Column col = A; col <= H; col++) {
             board_at(row, col) = (Piece) {.type = EMPTY, .player = NONE, .row = row, .col = col};
         }
     }
@@ -53,36 +59,115 @@ void initialize_board(Piece board[8][8])
     board_at(8, H) = (Piece) {.type = ROOK, .player = BL, .col = H, .row = 1};
 }
 
+void DrawBackground()
+{
+    ClearBackground(BROWN);
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            float square_size = BOARD_SIZE / 8;
+            int x = i * square_size;
+            int y = j * square_size;
+            Color square_color;
+            if ((i + j) % 2 == 0) square_color = BLACK; else square_color = WHITE;
+            DrawRectangle(x, y, square_size, square_size, square_color);
+        }
+    }
+}
+
+void DrawPieces(Piece board[8][8], Texture2D texture)
+{
+    int pad_x;
+    int pad_y;
+    Rectangle rec;
+    for (Row row = 1; row <= 8; row++) {
+        for (Column col = A; col <= H; col++) {
+            Piece piece = board_at(row, col);
+            if (piece.type == EMPTY) continue;
+            if (piece.type == ROOK) {
+                rec = (Rectangle) {
+                    .x = 3,
+                    .y = 179,
+                    .width = 47,
+                    .height = 243 - 179
+                };
+                pad_x = 27;
+                pad_y = 22;
+            } else if (piece.type == BISHOP) {
+                rec = (Rectangle) {
+                    .x = 139,
+                    .y = 177,
+                    .width = 70,
+                    .height = 250 - 179
+                };
+                pad_x = 15;
+                pad_y = 18;
+            } else if (piece.type == KNIGHT) {
+                rec = (Rectangle) {
+                    .x = 364,
+                    .y = 181,
+                    .width = 65,
+                    .height = 65
+                };
+                pad_x = 15;
+                pad_y = 18;
+            } else if (piece.type == QUEEN) {
+                rec = (Rectangle) {
+                    .x = 286,
+                    .y = 180,
+                    .width = 70,
+                    .height = 65
+                };
+                pad_x = 15;
+                pad_y = 18;
+            } else if (piece.type == KING) {
+                rec = (Rectangle) {
+                    .x = 217,
+                    .y = 178,
+                    .width = 67,
+                    .height = 62
+                };
+                pad_x = 15;
+                pad_y = 18;
+            } else if (piece.type == PAWN) {
+                rec = (Rectangle) {
+                    .x = 452,
+                    .y = 180,
+                    .width = 40,
+                    .height = 70
+                };
+                pad_x = 31;
+                pad_y = 16;
+            }
+            if (piece.player == BL) rec.y += 83;
+            pad_y = -pad_y;
+            Vector2 pos = {.x = col * BOARD_SIZE / 8 + pad_x, .y = SCREEN_HEIGHT - ((row) * BOARD_SIZE / 8 + pad_y)};
+            DrawTextureRec(texture, rec, pos, WHITE);
+        }
+    }
+
+}
+
+
 int main(void)
 {
-    const int board_len = 800;
-    const int padding = 400;
-    const int screen_height = board_len;
-    const int screen_width = board_len + padding;
-
-    InitWindow(screen_width, screen_height, "Chess");
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
     SetTargetFPS(60);
 
+    Image piece_images = LoadImage("pieces-removebg-preview.png");
+    Texture2D piece_texture = LoadTextureFromImage(piece_images);
+    int x = 1000;
+    int y = 100;
     Piece board[8][8];
     initialize_board(board);
     
     while (!WindowShouldClose())
     {
         BeginDrawing();
-            ClearBackground(BROWN);
-            for (int i = 0; i < 8; i++) {
-                for (int j = 0; j < 8; j++) {
-                    float square_len = board_len / 8;
-                    int x = i * square_len;
-                    int y = j * square_len;
-                    Color square_color;
-                    if ((i + j) % 2 == 0) square_color = BLACK; else square_color = WHITE;
-                    DrawRectangle(x, y, square_len, square_len, square_color);
-                }
-            }
+            DrawBackground();
+            DrawPieces(board, piece_texture);
         EndDrawing();
     }
 
-    CloseWindow();        // Close window and OpenGL context
+    CloseWindow();
     return 0;
 }
