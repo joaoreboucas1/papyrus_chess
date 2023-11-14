@@ -7,6 +7,7 @@
 #define SCREEN_HORIZ_PAD 400
 #define SCREEN_HEIGHT BOARD_SIZE
 #define SCREEN_WIDTH (BOARD_SIZE + SCREEN_HORIZ_PAD)
+#define POSSIBLE_MOVES_CAP 21
 
 typedef enum {
     WH, BL, NONE
@@ -21,6 +22,11 @@ typedef enum {
 } Column;
 
 typedef int Row;
+
+typedef struct {
+    Row row;
+    Column col;
+} Square;
 
 typedef struct {
     PieceType type;
@@ -154,20 +160,52 @@ void DrawPieces(Piece board[8][8], Texture2D texture)
 
 }
 
+void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves, int *count)
+{
+    if (p.type == PAWN) {
+        int direction = (p.player == WH) ? 1 : -1;
+        Row starting_row = (p.player == WH) ? 2 : 7;
+        if (p.row == 1 || p.row == 8) return;
+        if (board_at(p.row + direction, p.col).type != EMPTY) return;
+        possible_moves[*count] = (Square) {.row = p.row + direction, .col = p.col};
+        *count += 1;
+        if (board_at(p.row + 2*direction, p.col).type != EMPTY || p.row != starting_row) return;
+        possible_moves[*count] = (Square) {.row = p.row + 2*direction, .col = p.col};
+        *count += 1;
+    } else {
+        printf("Not implemented\n");
+    }
+    
+}
+
+void DrawPossibleMoves(Square possible_moves[POSSIBLE_MOVES_CAP], int possible_moves_count)
+{
+    const float r = 10.0f;
+    for (int i = 0; i < possible_moves_count; i++) {
+        int x = possible_moves[i].col * SQUARE_SIZE + SQUARE_SIZE/2;
+        int y = BOARD_SIZE - (possible_moves[i].row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
+        DrawCircle(x, y, r, GRAY);
+    }
+}
+
 
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
+    // TODO: figure out icon format for SetWindowIcon(Image image)
     SetTargetFPS(60);
+
     
-    Image piece_images = LoadImage("pieces-removebg-preview.png");
-    Texture2D piece_texture = LoadTextureFromImage(piece_images);
+    Texture2D piece_texture = LoadTexture("pieces-removebg-preview.png");
     int x = 1000;
     int y = 100;
     Piece board[8][8];
     Row target_row, sel_piece_row = 0;
     Column target_col, sel_piece_col = 0;
     bool selected_piece = false;
+    Square possible_moves[POSSIBLE_MOVES_CAP];
+    int possible_moves_count = 0;
+
 
     initialize_board(board);
     
@@ -180,14 +218,13 @@ int main(void)
             if (sel_piece_col >= 0 && sel_piece_col < 8 && sel_piece_row > 0 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
                 selected_piece = true;
                 board_at(sel_piece_row, sel_piece_col).selected = true;
-                printf("Selecting piece at row = %d, col = %d\n", sel_piece_row, sel_piece_col);
+                calculate_possible_moves(board_at(sel_piece_row, sel_piece_col), board, possible_moves, &possible_moves_count);
             }
         } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
             Vector2 mouse_pos = GetMousePosition();
             target_col = ((int) mouse_pos.x) / SQUARE_SIZE;
             target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (target_col <= 8 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
-                printf("Releasing piece at row = %d, col = %d\n", target_row, target_col);
+            if (target_col >= 0 && target_col < 8 && target_row > 0 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
                 board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
                 board_at(target_row, target_col).selected = false;
                 board_at(sel_piece_row, sel_piece_col) = (Piece) {.type = EMPTY, .player = NONE, .row = sel_piece_row, .col = sel_piece_col, .selected = false};
@@ -195,12 +232,14 @@ int main(void)
                 board_at(sel_piece_row, sel_piece_col).selected = false;
             }
             selected_piece = false;
-
+            possible_moves_count = 0;
         }
 
         BeginDrawing();
             DrawBackground();
             DrawPieces(board, piece_texture);
+            if (selected_piece && possible_moves_count > 0) DrawPossibleMoves(possible_moves, possible_moves_count);
+            // TODO: render possible moves
         EndDrawing();
     }
 
