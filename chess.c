@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #define BOARD_SIZE 800
+#define SQUARE_SIZE (BOARD_SIZE/8)
 #define SCREEN_HORIZ_PAD 400
 #define SCREEN_HEIGHT BOARD_SIZE
 #define SCREEN_WIDTH (BOARD_SIZE + SCREEN_HORIZ_PAD)
@@ -26,6 +27,7 @@ typedef struct {
     Player player;
     Row row;
     Column col;
+    bool selected;
 } Piece;
 
 #define board_at(row, col) board[row - 1][col]
@@ -79,6 +81,7 @@ void DrawPieces(Piece board[8][8], Texture2D texture)
     int pad_x;
     int pad_y;
     Rectangle rec;
+    Vector2 pos;
     for (Row row = 1; row <= 8; row++) {
         for (Column col = A; col <= H; col++) {
             Piece piece = board_at(row, col);
@@ -140,7 +143,11 @@ void DrawPieces(Piece board[8][8], Texture2D texture)
             }
             if (piece.player == BL) rec.y += 83;
             pad_y = -pad_y;
-            Vector2 pos = {.x = col * BOARD_SIZE / 8 + pad_x, .y = SCREEN_HEIGHT - ((row) * BOARD_SIZE / 8 + pad_y)};
+            if (piece.selected) {
+                pos = GetMousePosition();
+            } else {
+                pos = (Vector2) {.x = col * BOARD_SIZE / 8 + pad_x, .y = SCREEN_HEIGHT - ((row) * BOARD_SIZE / 8 + pad_y)};
+            }
             DrawTextureRec(texture, rec, pos, WHITE);
         }
     }
@@ -158,10 +165,29 @@ int main(void)
     int x = 1000;
     int y = 100;
     Piece board[8][8];
+    Row sel_piece_row = 0;
+    Column sel_piece_col = 0;
     initialize_board(board);
     
     while (!WindowShouldClose())
     {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && sel_piece_row == 0) {
+            Vector2 mouse_pos = GetMousePosition();
+            sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
+            sel_piece_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
+            if (sel_piece_col <= 8 && sel_piece_row <= 8) {
+                board_at(sel_piece_row, sel_piece_col - 1).selected = true;
+                printf("Picking piece at row = %d, col = %d!\n", sel_piece_row, sel_piece_col);
+            } else {
+                sel_piece_row = 0;
+            }
+        } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && board_at(sel_piece_row, sel_piece_col - 1).selected) {
+            if (sel_piece_col <= 8 && sel_piece_row <= 8) {
+                board_at(sel_piece_row, sel_piece_col - 1).selected = false;
+                printf("Release piece at row = %d, col = %d!\n", sel_piece_row, sel_piece_col);
+                sel_piece_row = 0;
+            }
+        }
         BeginDrawing();
             DrawBackground();
             DrawPieces(board, piece_texture);
