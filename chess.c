@@ -168,10 +168,43 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
         if (p.row == 1 || p.row == 8) return;
         if (board_at(p.row + direction, p.col).type != EMPTY) return;
         possible_moves[*count] = (Square) {.row = p.row + direction, .col = p.col};
-        *count += 1;
+        (*count)++;
         if (board_at(p.row + 2*direction, p.col).type != EMPTY || p.row != starting_row) return;
         possible_moves[*count] = (Square) {.row = p.row + 2*direction, .col = p.col};
-        *count += 1;
+        (*count)++;
+    } else if (p.type == KNIGHT) {
+        if (p.row + 2 <= 8 && p.col + 1 <= H && board_at(p.row + 2, p.col + 1).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row + 2, .col = p.col + 1};
+            (*count)++;
+        }
+        if (p.row + 2 <= 8 && p.col - 1 <= H && board_at(p.row + 2, p.col - 1).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row + 2, .col = p.col - 1};
+            (*count)++;
+        }
+        if (p.row - 2 <= 8 && p.col + 1 <= H && board_at(p.row - 2, p.col + 1).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row - 2, .col = p.col + 1};
+            (*count)++;
+        }
+        if (p.row - 2 <= 8 && p.col - 1 <= H && board_at(p.row - 2, p.col - 1).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row - 2, .col = p.col - 1};
+            (*count)++;
+        }
+        if (p.row + 1 <= 8 && p.col + 2 <= H && board_at(p.row + 1, p.col + 2).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row + 1, .col = p.col + 2};
+            (*count)++;
+        }
+        if (p.row + 1 <= 8 && p.col - 2 <= H && board_at(p.row + 1, p.col - 2).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row + 1, .col = p.col - 2};
+            (*count)++;
+        }
+        if (p.row - 1 <= 8 && p.col + 2 <= H && board_at(p.row - 1, p.col + 2).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row - 1, .col = p.col + 2};
+            (*count)++;
+        }
+        if (p.row - 1 <= 8 && p.col - 2 <= H && board_at(p.row - 1, p.col - 2).type == EMPTY) {
+            possible_moves[*count] = (Square) {.row = p.row - 1, .col = p.col - 2};
+            (*count)++;
+        }
     } else {
         printf("Not implemented\n");
     }
@@ -226,6 +259,8 @@ int main(void)
             target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
             if (target_col >= 0 && target_col < 8 && target_row > 0 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
                 board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
+                board_at(target_row, target_col).row = target_row;
+                board_at(target_row, target_col).col = target_col;
                 board_at(target_row, target_col).selected = false;
                 board_at(sel_piece_row, sel_piece_col) = (Piece) {.type = EMPTY, .player = NONE, .row = sel_piece_row, .col = sel_piece_col, .selected = false};
             } else {
