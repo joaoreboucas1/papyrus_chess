@@ -12,6 +12,10 @@ The developers who want to build the project by themselves must have `raylib` in
 $ gcc -o chess chess.c
 ```
 
+## Running the Program
+
+Just run the executable.
+
 ## Milestones
 
 [x] Rendering

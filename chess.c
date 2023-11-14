@@ -159,35 +159,45 @@ int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
     SetTargetFPS(60);
-
+    
     Image piece_images = LoadImage("pieces-removebg-preview.png");
     Texture2D piece_texture = LoadTextureFromImage(piece_images);
     int x = 1000;
     int y = 100;
     Piece board[8][8];
-    Row sel_piece_row = 0;
-    Column sel_piece_col = 0;
+    Row target_row, sel_piece_row = 0;
+    Column target_col, sel_piece_col = 0;
+    bool selected_piece = false;
+
     initialize_board(board);
     
     while (!WindowShouldClose())
     {
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && sel_piece_row == 0) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
             Vector2 mouse_pos = GetMousePosition();
-            sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
+            sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE;
             sel_piece_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (sel_piece_col <= 8 && sel_piece_row <= 8) {
-                board_at(sel_piece_row, sel_piece_col - 1).selected = true;
-                printf("Picking piece at row = %d, col = %d!\n", sel_piece_row, sel_piece_col);
+            if (sel_piece_col >= 0 && sel_piece_col < 8 && sel_piece_row > 0 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
+                selected_piece = true;
+                board_at(sel_piece_row, sel_piece_col).selected = true;
+                printf("Selecting piece at row = %d, col = %d\n", sel_piece_row, sel_piece_col);
+            }
+        } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
+            Vector2 mouse_pos = GetMousePosition();
+            target_col = ((int) mouse_pos.x) / SQUARE_SIZE;
+            target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
+            if (target_col <= 8 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
+                printf("Releasing piece at row = %d, col = %d\n", target_row, target_col);
+                board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
+                board_at(target_row, target_col).selected = false;
+                board_at(sel_piece_row, sel_piece_col) = (Piece) {.type = EMPTY, .player = NONE, .row = sel_piece_row, .col = sel_piece_col, .selected = false};
             } else {
-                sel_piece_row = 0;
+                board_at(sel_piece_row, sel_piece_col).selected = false;
             }
-        } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && board_at(sel_piece_row, sel_piece_col - 1).selected) {
-            if (sel_piece_col <= 8 && sel_piece_row <= 8) {
-                board_at(sel_piece_row, sel_piece_col - 1).selected = false;
-                printf("Release piece at row = %d, col = %d!\n", sel_piece_row, sel_piece_col);
-                sel_piece_row = 0;
-            }
+            selected_piece = false;
+
         }
+
         BeginDrawing();
             DrawBackground();
             DrawPieces(board, piece_texture);
