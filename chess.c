@@ -296,7 +296,7 @@ int main(void)
     // TODO: figure out icon format for SetWindowIcon(Image image)
     SetTargetFPS(60);
 
-    Texture2D piece_texture = LoadTexture("pieces-removebg-preview.png");
+    Texture2D piece_texture = LoadTexture("pieces.png");
     Piece board[8][8];
     Row target_row, sel_piece_row;
     Column target_col, sel_piece_col;
