@@ -180,7 +180,7 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             possible_moves[*count].type = CAPTURE;
             (*count)++;
         }
-        if (p.col + 1 <= H && board_at(p.row + direction, p.col - 1).player == 1 - p.player) {
+        if (p.col - 1 >= A && board_at(p.row + direction, p.col - 1).player == 1 - p.player) {
             possible_moves[*count].target = (Square) {.row = p.row + direction, .col = p.col - 1};    
             possible_moves[*count].type = CAPTURE;
             (*count)++;
@@ -534,6 +534,36 @@ bool is_possible(Row r, Column c, Move possible_moves[POSSIBLE_MOVES_CAP], int p
     return false;
 }
 
+void find_king(Piece board[8][8], Player p, Square *king_square)
+{
+    for (int row = 1; row <= 8; row++) {
+        for (int col = A; col <= H; col++) {
+            if (board_at(row, col).player == p && board_at(row, col).type == KING) {
+                *king_square = (Square) {.row = row, .col = col};
+            } 
+        }
+    }
+}
+
+bool is_check(Piece board[8][8], Player turn)
+{
+    Move possible_moves[POSSIBLE_MOVES_CAP];
+    int possible_moves_count = 0;
+    Square king_square;
+    
+    find_king(board, turn, &king_square);
+    for (int row = 1; row <= 8; row++) {
+        for (int col = A; col <= H; col++) {
+            if (board_at(row, col).player != 1 - turn) continue;
+            calculate_possible_moves(board_at(row, col), board, possible_moves, &possible_moves_count);
+            // printf("Piece (type = %d) at row = %d, col = %d has %d possible moves\n", board_at(row, col).type, row, col, possible_moves_count);
+            if (is_possible(king_square.row, king_square.col, possible_moves, possible_moves_count)) return true;
+            possible_moves_count = 0;
+        }
+    }
+    return false;
+}
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
@@ -549,6 +579,7 @@ int main(void)
     bool selected_piece = false;
     Move possible_moves[POSSIBLE_MOVES_CAP];
     int possible_moves_count = 0;
+    bool check = false;
 
     initialize_board(board);
     
@@ -558,7 +589,8 @@ int main(void)
             Vector2 mouse_pos = GetMousePosition();
             sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             sel_piece_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY && board_at(sel_piece_row, sel_piece_col).player == turn) {
+            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
+                // TODO: put the turn check back board_at(sel_piece_row, sel_piece_col).player == turn
                 selected_piece = true;
                 board_at(sel_piece_row, sel_piece_col).selected = true;
                 calculate_possible_moves(board_at(sel_piece_row, sel_piece_col), board, possible_moves, &possible_moves_count);
@@ -567,13 +599,16 @@ int main(void)
             Vector2 mouse_pos = GetMousePosition();
             target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count)) {
+            if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && board_at(target_row, target_col).player != turn) {
+                // NOTE: to disable move validation, change is_possible(...) to board_at(target_row, target_col).player != turn
                 board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
                 board_at(target_row, target_col).row = target_row;
                 board_at(target_row, target_col).col = target_col;
                 board_at(target_row, target_col).selected = false;
                 board_at(sel_piece_row, sel_piece_col) = (Piece) {.type = EMPTY, .player = NONE, .row = sel_piece_row, .col = sel_piece_col, .selected = false};
                 turn = 1 - turn;
+                check = is_check(board, turn);
+                if (check) printf("Check!\n");
             } else {
                 board_at(sel_piece_row, sel_piece_col).selected = false;
             }
