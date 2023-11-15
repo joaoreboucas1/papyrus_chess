@@ -18,7 +18,7 @@ typedef enum {
 } PieceType;
 
 typedef enum {
-    A, B, C, D, E, F, G, H
+    A = 1, B, C, D, E, F, G, H
 } Column;
 
 typedef int Row;
@@ -36,7 +36,7 @@ typedef struct {
     bool selected;
 } Piece;
 
-#define board_at(row, col) board[row - 1][col]
+#define board_at(row, col) board[row - 1][col - 1]
 void initialize_board(Piece board[8][8])
 {
     for (Row row = 1; row <= 8; row++) {
@@ -57,14 +57,14 @@ void initialize_board(Piece board[8][8])
     board_at(1, G) = (Piece) {.type = KNIGHT, .player = WH, .col = G, .row = 1};
     board_at(1, H) = (Piece) {.type = ROOK, .player = WH, .col = H, .row = 1};
 
-    board_at(8, A) = (Piece) {.type = ROOK, .player = BL, .col = A, .row = 1};
-    board_at(8, B) = (Piece) {.type = KNIGHT, .player = BL, .col = B, .row = 1};
-    board_at(8, C) = (Piece) {.type = BISHOP, .player = BL, .col = C, .row = 1};
-    board_at(8, D) = (Piece) {.type = QUEEN, .player = BL, .col = D, .row = 1};
-    board_at(8, E) = (Piece) {.type = KING, .player = BL, .col = E, .row = 1};
-    board_at(8, F) = (Piece) {.type = BISHOP, .player = BL, .col = F, .row = 1};
-    board_at(8, G) = (Piece) {.type = KNIGHT, .player = BL, .col = G, .row = 1};
-    board_at(8, H) = (Piece) {.type = ROOK, .player = BL, .col = H, .row = 1};
+    board_at(8, A) = (Piece) {.type = ROOK, .player = BL, .col = A, .row = 8};
+    board_at(8, B) = (Piece) {.type = KNIGHT, .player = BL, .col = B, .row = 8};
+    board_at(8, C) = (Piece) {.type = BISHOP, .player = BL, .col = C, .row = 8};
+    board_at(8, D) = (Piece) {.type = QUEEN, .player = BL, .col = D, .row = 8};
+    board_at(8, E) = (Piece) {.type = KING, .player = BL, .col = E, .row = 8};
+    board_at(8, F) = (Piece) {.type = BISHOP, .player = BL, .col = F, .row = 8};
+    board_at(8, G) = (Piece) {.type = KNIGHT, .player = BL, .col = G, .row = 8};
+    board_at(8, H) = (Piece) {.type = ROOK, .player = BL, .col = H, .row = 8};
 }
 
 void DrawBackground()
@@ -152,16 +152,17 @@ void DrawPieces(Piece board[8][8], Texture2D texture)
             if (piece.selected) {
                 pos = GetMousePosition();
             } else {
-                pos = (Vector2) {.x = col * BOARD_SIZE / 8 + pad_x, .y = SCREEN_HEIGHT - ((row) * BOARD_SIZE / 8 + pad_y)};
+                pos = (Vector2) {.x = (col - 1) * BOARD_SIZE / 8 + pad_x, .y = SCREEN_HEIGHT - (row * BOARD_SIZE / 8 + pad_y)};
             }
             DrawTextureRec(texture, rec, pos, WHITE);
         }
     }
-
 }
 
 void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves, int *count)
 {
+    Row r;
+    Column c;
     if (p.type == PAWN) {
         int direction = (p.player == WH) ? 1 : -1;
         Row starting_row = (p.player == WH) ? 2 : 7;
@@ -173,6 +174,7 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
         possible_moves[*count] = (Square) {.row = p.row + 2*direction, .col = p.col};
         (*count)++;
     } else if (p.type == KNIGHT) {
+        // TODO: check why the highlight of black knights is broken
         if (p.row + 2 <= 8 && p.col + 1 <= H && board_at(p.row + 2, p.col + 1).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row + 2, .col = p.col + 1};
             (*count)++;
@@ -205,22 +207,61 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
             possible_moves[*count] = (Square) {.row = p.row - 1, .col = p.col - 2};
             (*count)++;
         }
-    } else {
+    } else if (p.type == BISHOP) {
+        for (int i = 1; i < 8; i++) {
+            r = p.row + i;
+            c = p.col + i;
+            if (r > 8 || c > H) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row - i;
+            c = p.col + i;
+            if (r < 1 || c > H) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row + i;
+            c = p.col - i;
+            printf("Checking row %d col %d; A = %d\n", r, c, A);
+            if (r > 8 || c < A) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row - i;
+            c = p.col - i;
+            if (r < 1 || c < A) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        printf("Possible moves: %d\n", *count);
+    } else if (p.type == ROOK) {
         printf("Not implemented\n");
+    } else if (p.type == QUEEN) {
+        printf("Not implemented\n");
+    } else if (p.type == KING) {
+        printf("Not implemented\n");        
+    } else {
+        printf("Unknown piece type");
     }
-    
 }
 
 void DrawPossibleMoves(Square possible_moves[POSSIBLE_MOVES_CAP], int possible_moves_count)
 {
     const float r = 10.0f;
     for (int i = 0; i < possible_moves_count; i++) {
-        int x = possible_moves[i].col * SQUARE_SIZE + SQUARE_SIZE/2;
+        int x = (possible_moves[i].col - 1) * SQUARE_SIZE + SQUARE_SIZE/2;
         int y = BOARD_SIZE - (possible_moves[i].row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
         DrawCircle(x, y, r, GRAY);
     }
 }
-
 
 int main(void)
 {
@@ -228,7 +269,6 @@ int main(void)
     // TODO: figure out icon format for SetWindowIcon(Image image)
     SetTargetFPS(60);
 
-    
     Texture2D piece_texture = LoadTexture("pieces-removebg-preview.png");
     int x = 1000;
     int y = 100;
@@ -239,23 +279,22 @@ int main(void)
     Square possible_moves[POSSIBLE_MOVES_CAP];
     int possible_moves_count = 0;
 
-
     initialize_board(board);
     
     while (!WindowShouldClose())
     {
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
             Vector2 mouse_pos = GetMousePosition();
-            sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE;
+            sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             sel_piece_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (sel_piece_col >= 0 && sel_piece_col < 8 && sel_piece_row > 0 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
+            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
                 selected_piece = true;
                 board_at(sel_piece_row, sel_piece_col).selected = true;
                 calculate_possible_moves(board_at(sel_piece_row, sel_piece_col), board, possible_moves, &possible_moves_count);
             }
         } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
             Vector2 mouse_pos = GetMousePosition();
-            target_col = ((int) mouse_pos.x) / SQUARE_SIZE;
+            target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
             if (target_col >= 0 && target_col < 8 && target_row > 0 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
                 board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
