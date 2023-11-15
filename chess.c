@@ -228,7 +228,6 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
         for (int i = 1; i < 8; i++) {
             r = p.row + i;
             c = p.col - i;
-            printf("Checking row %d col %d; A = %d\n", r, c, A);
             if (r > 8 || c < A) break;
             if (board_at(r, c).type != EMPTY) break;
             possible_moves[*count] = (Square) {.row = r, .col = c};
@@ -272,9 +271,78 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
             (*count)++;
         }        
     } else if (p.type == QUEEN) {
-        printf("Not implemented\n");
+        for (int i = 1; i < 8; i++) {
+            r = p.row + i;
+            c = p.col + i;
+            if (r > 8 || c > H) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row - i;
+            c = p.col + i;
+            if (r < 1 || c > H) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row + i;
+            c = p.col - i;
+            if (r > 8 || c < A) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row - i;
+            c = p.col - i;
+            if (r < 1 || c < A) break;
+            if (board_at(r, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row + i;
+            if (r > 8) break;
+            if (board_at(r, p.col).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = p.col};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row - i;
+            if (r < 1) break;
+            if (board_at(r, p.col).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = p.col};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            c = p.col + i;
+            if (c > H) break;
+            if (board_at(p.row, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = p.row, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            c = p.col - i;
+            if (c < A) break;
+            if (board_at(p.row, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = p.row, .col = c};
+            (*count)++;
+        }
     } else if (p.type == KING) {
-        printf("Not implemented\n");        
+        for (int drow = -1; drow <= 1; drow++) {
+            for (int dcol = -1; dcol <= 1; dcol++) {
+                if (drow == 0 && dcol == 0) continue;
+                r = p.row + drow;
+                c = p.col + dcol;
+                if (r >= 1 && r <= 8 && c >= A && c <= H && board_at(r, c).type == EMPTY) {
+                    possible_moves[*count] = (Square) {.row = r, .col = c};
+                    (*count)++;
+                }
+            }
+        }        
     } else {
         printf("Unknown piece type");
     }
