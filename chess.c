@@ -7,7 +7,7 @@
 #define SCREEN_HORIZ_PAD 400
 #define SCREEN_HEIGHT BOARD_SIZE
 #define SCREEN_WIDTH (BOARD_SIZE + SCREEN_HORIZ_PAD)
-#define POSSIBLE_MOVES_CAP 21
+#define POSSIBLE_MOVES_CAP 30
 
 typedef enum {
     WH, BL, NONE
@@ -526,6 +526,14 @@ void DrawPossibleMoves(Move possible_moves[POSSIBLE_MOVES_CAP], int possible_mov
     }
 }
 
+bool is_possible(Row r, Column c, Move possible_moves[POSSIBLE_MOVES_CAP], int possible_moves_count)
+{
+    for (int i = 0; i < possible_moves_count; i++) {
+        if (possible_moves[i].target.row == r && possible_moves[i].target.col == c) return true;
+    }
+    return false;
+}
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
@@ -559,7 +567,7 @@ int main(void)
             Vector2 mouse_pos = GetMousePosition();
             target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
+            if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count)) {
                 board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
                 board_at(target_row, target_col).row = target_row;
                 board_at(target_row, target_col).col = target_col;
