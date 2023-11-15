@@ -174,20 +174,21 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
         possible_moves[*count] = (Square) {.row = p.row + 2*direction, .col = p.col};
         (*count)++;
     } else if (p.type == KNIGHT) {
-        // TODO: check why the highlight of black knights is broken
+        // NOTE: the enum literals are of type unsigned int. If you have Column c = 0; and you decrement its value, it goes to the max value
+        // Therefore, before comparing them to the minimum values, if they might be negative, you must cast to int before the comparison
         if (p.row + 2 <= 8 && p.col + 1 <= H && board_at(p.row + 2, p.col + 1).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row + 2, .col = p.col + 1};
             (*count)++;
         }
-        if (p.row + 2 <= 8 && p.col - 1 <= H && board_at(p.row + 2, p.col - 1).type == EMPTY) {
+        if (p.row + 2 <= 8 && (int) p.col - 1 >= A && board_at(p.row + 2, p.col - 1).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row + 2, .col = p.col - 1};
             (*count)++;
         }
-        if (p.row - 2 <= 8 && p.col + 1 <= H && board_at(p.row - 2, p.col + 1).type == EMPTY) {
+        if ((int) p.row - 2 >= 1 && p.col + 1 <= H && board_at(p.row - 2, p.col + 1).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row - 2, .col = p.col + 1};
             (*count)++;
         }
-        if (p.row - 2 <= 8 && p.col - 1 <= H && board_at(p.row - 2, p.col - 1).type == EMPTY) {
+        if ((int) p.row - 2 >= 1 && (int) p.col - 1 >= A && board_at(p.row - 2, p.col - 1).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row - 2, .col = p.col - 1};
             (*count)++;
         }
@@ -195,15 +196,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
             possible_moves[*count] = (Square) {.row = p.row + 1, .col = p.col + 2};
             (*count)++;
         }
-        if (p.row + 1 <= 8 && p.col - 2 <= H && board_at(p.row + 1, p.col - 2).type == EMPTY) {
+        if (p.row + 1 <= 8 && (int) p.col - 2 >= A && board_at(p.row + 1, p.col - 2).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row + 1, .col = p.col - 2};
             (*count)++;
         }
-        if (p.row - 1 <= 8 && p.col + 2 <= H && board_at(p.row - 1, p.col + 2).type == EMPTY) {
+        if ((int) p.row - 1 >= 1 && p.col + 2 <= H && board_at(p.row - 1, p.col + 2).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row - 1, .col = p.col + 2};
             (*count)++;
         }
-        if (p.row - 1 <= 8 && p.col - 2 <= H && board_at(p.row - 1, p.col - 2).type == EMPTY) {
+        if ((int) p.row - 1 >= 1 && (int) p.col - 2 >= A && board_at(p.row - 1, p.col - 2).type == EMPTY) {
             possible_moves[*count] = (Square) {.row = p.row - 1, .col = p.col - 2};
             (*count)++;
         }
@@ -241,9 +242,35 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Square *possible_moves
             possible_moves[*count] = (Square) {.row = r, .col = c};
             (*count)++;
         }
-        printf("Possible moves: %d\n", *count);
     } else if (p.type == ROOK) {
-        printf("Not implemented\n");
+        for (int i = 1; i < 8; i++) {
+            r = p.row + i;
+            if (r > 8) break;
+            if (board_at(r, p.col).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = p.col};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            r = p.row - i;
+            if (r < 1) break;
+            if (board_at(r, p.col).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = r, .col = p.col};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            c = p.col + i;
+            if (c > H) break;
+            if (board_at(p.row, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = p.row, .col = c};
+            (*count)++;
+        }
+        for (int i = 1; i < 8; i++) {
+            c = p.col - i;
+            if (c < A) break;
+            if (board_at(p.row, c).type != EMPTY) break;
+            possible_moves[*count] = (Square) {.row = p.row, .col = c};
+            (*count)++;
+        }        
     } else if (p.type == QUEEN) {
         printf("Not implemented\n");
     } else if (p.type == KING) {
@@ -270,11 +297,9 @@ int main(void)
     SetTargetFPS(60);
 
     Texture2D piece_texture = LoadTexture("pieces-removebg-preview.png");
-    int x = 1000;
-    int y = 100;
     Piece board[8][8];
-    Row target_row, sel_piece_row = 0;
-    Column target_col, sel_piece_col = 0;
+    Row target_row, sel_piece_row;
+    Column target_col, sel_piece_col;
     bool selected_piece = false;
     Square possible_moves[POSSIBLE_MOVES_CAP];
     int possible_moves_count = 0;
@@ -296,7 +321,7 @@ int main(void)
             Vector2 mouse_pos = GetMousePosition();
             target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (target_col >= 0 && target_col < 8 && target_row > 0 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
+            if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && board_at(target_row, target_col).type == EMPTY) {
                 board_at(target_row, target_col) = board_at(sel_piece_row, sel_piece_col);
                 board_at(target_row, target_col).row = target_row;
                 board_at(target_row, target_col).col = target_col;
@@ -313,7 +338,6 @@ int main(void)
             DrawBackground();
             DrawPieces(board, piece_texture);
             if (selected_piece && possible_moves_count > 0) DrawPossibleMoves(possible_moves, possible_moves_count);
-            // TODO: render possible moves
         EndDrawing();
     }
 
