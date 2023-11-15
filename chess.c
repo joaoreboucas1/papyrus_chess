@@ -365,7 +365,9 @@ int main(void)
     SetTargetFPS(60);
 
     Texture2D piece_texture = LoadTexture("pieces.png");
+    Font papyrus = LoadFont("papyrus.ttf");
     Piece board[8][8];
+    Player turn = WH;
     Row target_row, sel_piece_row;
     Column target_col, sel_piece_col;
     bool selected_piece = false;
@@ -380,7 +382,7 @@ int main(void)
             Vector2 mouse_pos = GetMousePosition();
             sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             sel_piece_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
+            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY && board_at(sel_piece_row, sel_piece_col).player == turn) {
                 selected_piece = true;
                 board_at(sel_piece_row, sel_piece_col).selected = true;
                 calculate_possible_moves(board_at(sel_piece_row, sel_piece_col), board, possible_moves, &possible_moves_count);
@@ -395,6 +397,7 @@ int main(void)
                 board_at(target_row, target_col).col = target_col;
                 board_at(target_row, target_col).selected = false;
                 board_at(sel_piece_row, sel_piece_col) = (Piece) {.type = EMPTY, .player = NONE, .row = sel_piece_row, .col = sel_piece_col, .selected = false};
+                turn = 1 - turn;
             } else {
                 board_at(sel_piece_row, sel_piece_col).selected = false;
             }
@@ -406,6 +409,12 @@ int main(void)
             DrawBackground();
             DrawPieces(board, piece_texture);
             if (selected_piece && possible_moves_count > 0) DrawPossibleMoves(possible_moves, possible_moves_count);
+            char* turn_msg = (turn == WH) ? "White to play" : "Black to play";
+            int pad = 50;
+            Vector2 turn_msg_pos = { .x = BOARD_SIZE + pad, .y = SCREEN_HEIGHT / 2 - 30};
+            float size = 60.0f;
+            float spacing = 5.0f;
+            DrawTextEx(papyrus, turn_msg, turn_msg_pos, size, spacing, WHITE);
         EndDrawing();
     }
 
