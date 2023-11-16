@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-#include <unistd.h>
 
 #define BOARD_SIZE 800
 #define SQUARE_SIZE (BOARD_SIZE/8)
@@ -625,6 +624,7 @@ int main(void)
     Texture2D piece_texture = LoadTexture("pieces.png");
     Font papyrus = LoadFont("papyrus.ttf");
     bool playing = false;
+    bool board_init = false;
     Piece board[8][8];
     Player turn = WH;
     Row target_row, selected_row;
@@ -634,15 +634,19 @@ int main(void)
     int possible_moves_count = 0;
     bool check = false;
     float now;
-
-    initialize_board(board);
     
     while (!WindowShouldClose())
     {
         if (playing) {
+            if (!board_init) {
+                initialize_board(board);
+                possible_moves_count = 0;
+                board_init = true;
+                check = false;
+            }
             if (check) {
                 if (is_mate(board, turn, possible_moves, &possible_moves_count)) printf("Checkmate!\n");
-                sleep(10);
+                WaitTime(6.0f);
                 playing = false;
             }
             if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
@@ -660,7 +664,7 @@ int main(void)
                 Vector2 mouse_pos = GetMousePosition();
                 target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                 target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && board_at(target_row, target_col).player != turn) {
+                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count)) {
                     // NOTE: to disable move validation, change is_possible(...) to board_at(target_row, target_col).player != turn
                     board_at(target_row, target_col) = board_at(selected_row, selected_col);
                     board_at(target_row, target_col).row = target_row;
@@ -669,7 +673,6 @@ int main(void)
                     board_at(selected_row, selected_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
                     turn = 1 - turn;
                     check = is_check(board, turn);
-                    // TODO: if a player gets checked, see if it's checkmate
                 } else {
                     board_at(selected_row, selected_col).selected = false;
                 }
@@ -696,6 +699,7 @@ int main(void)
                 }
             EndDrawing();
         } else {
+            board_init = false;
             BeginDrawing();
                 ClearBackground(BROWN);
                 now = GetTime();
