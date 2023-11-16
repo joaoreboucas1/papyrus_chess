@@ -564,6 +564,41 @@ bool is_check(Piece board[8][8], Player turn)
     return false;
 }
 
+#define next_board_at(row, col) next_board[row - 1][col - 1]
+void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, int *count, Player turn)
+{
+    int new_count = 0;
+    Piece next_board[8][8];
+    Piece piece_at_target;
+    Move move;
+    bool check;
+
+    if (*count == 0) return;
+
+    for (int i = 0; i < 8; i++) {
+        for (int j = 0; j < 8; j++) {
+            next_board[i][j] = board[i][j];
+        }
+    }
+    for (int i = 0; i < *count; i++) {
+        // Perform the move in the next_board
+        move = possible_moves[i];
+        piece_at_target = next_board_at(move.target.row, move.target.col);
+        next_board_at(move.target.row, move.target.col) = next_board_at(p.row, p.col);
+        next_board_at(move.target.row, move.target.col).row = move.target.row;
+        next_board_at(move.target.row, move.target.col).col = move.target.col;
+        next_board_at(p.row, p.col) = (Piece) {.type = EMPTY, .player = NONE, .row = p.row, .col = p.col, .selected = false};
+        check = is_check(next_board, turn);
+        if (!check) {
+            possible_moves[new_count] = move;
+            new_count++;
+        }
+        next_board_at(p.row, p.col) = p;
+        next_board_at(move.target.row, move.target.col) = piece_at_target;
+    }
+    *count = new_count;
+}
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
@@ -589,11 +624,13 @@ int main(void)
             Vector2 mouse_pos = GetMousePosition();
             sel_piece_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
             sel_piece_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY) {
-                // TODO: put the turn check back board_at(sel_piece_row, sel_piece_col).player == turn
+            if (sel_piece_col >= A && sel_piece_col <= H && sel_piece_row >= 1 && sel_piece_row <= 8 && board_at(sel_piece_row, sel_piece_col).type != EMPTY && board_at(sel_piece_row, sel_piece_col).player == turn) {
+                // NOTE: to turn off turn system, just remove board_at(sel_piece_row, sel_piece_col).player == turn
+                // TODO: if player in check, possible moves can only highlight moves that "cancel" the check
                 selected_piece = true;
                 board_at(sel_piece_row, sel_piece_col).selected = true;
                 calculate_possible_moves(board_at(sel_piece_row, sel_piece_col), board, possible_moves, &possible_moves_count);
+                if (check) validate_possible_moves(board_at(sel_piece_row, sel_piece_col), board, possible_moves, &possible_moves_count, turn);
             }
         } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
             Vector2 mouse_pos = GetMousePosition();
@@ -608,7 +645,7 @@ int main(void)
                 board_at(sel_piece_row, sel_piece_col) = (Piece) {.type = EMPTY, .player = NONE, .row = sel_piece_row, .col = sel_piece_col, .selected = false};
                 turn = 1 - turn;
                 check = is_check(board, turn);
-                if (check) printf("Check!\n");
+                // TODO: if a player gets checked, see if it's checkmate
             } else {
                 board_at(sel_piece_row, sel_piece_col).selected = false;
             }
@@ -626,6 +663,13 @@ int main(void)
             float size = 60.0f;
             float spacing = 5.0f;
             DrawTextEx(papyrus, turn_msg, turn_msg_pos, size, spacing, WHITE);
+            if (check) {
+                char* check_msg = "In check";
+                pad = 100;
+                float y_check_msg = (turn == WH) ? SCREEN_HEIGHT / 2 + 250 : SCREEN_HEIGHT / 2 - 250;
+                Vector2 check_msg_pos = { .x = BOARD_SIZE + pad, .y = y_check_msg};
+                DrawTextEx(papyrus, check_msg, check_msg_pos, size, spacing, WHITE);
+            }
         EndDrawing();
     }
 
