@@ -1,8 +1,8 @@
-# Chess
+# Papyrus Chess
 
 **NOTE: this is a work in progress!**
 
-Small chess program written in C as an exercise.
+Small chess program written in C.
 
 ## Build Dependencies
 
@@ -15,8 +15,3 @@ $ gcc -o chess chess.c
 ## Running the Program
 
 Just run the executable.
-
-## Milestones
-
-[x] Rendering
-[x] Simple move interface
