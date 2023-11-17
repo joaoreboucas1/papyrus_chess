@@ -2,7 +2,7 @@
 
 **NOTE: this is a work in progress!**
 
-Small chess program written in C.
+Papyrus chess is an *antique*-themed (i.e. ugly) chess program.
 
 ## Build Dependencies
 
@@ -20,4 +20,4 @@ Just run the executable.
 
 ## TODO
 
-Figure out a way to ship the application
+Figure out a way to ship the application. Since the font and assets

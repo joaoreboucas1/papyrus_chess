@@ -621,8 +621,8 @@ int main(void)
     // TODO: figure out icon format for SetWindowIcon(Image image)
     SetTargetFPS(60);
 
-    Texture2D piece_texture = LoadTexture("pieces.png");
-    Font papyrus = LoadFont("papyrus.ttf");
+    Texture2D piece_texture = LoadTexture("assets/pieces.png");
+    Font papyrus = LoadFont("assets/papyrus.ttf");
     bool playing = false;
     bool board_init = false;
     Piece board[8][8];
