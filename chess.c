@@ -618,11 +618,18 @@ bool is_mate(Piece board[8][8], Player turn, Move *possible_moves, int *count)
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
+    InitAudioDevice();
     // TODO: figure out icon format for SetWindowIcon(Image image)
     SetTargetFPS(60);
 
     Texture2D piece_texture = LoadTexture("assets/pieces.png");
     Font papyrus = LoadFont("assets/papyrus.ttf");
+    Sound move_sound = LoadSound("assets/move.mp3");
+    Sound capture_sound = LoadSound("assets/capture.mp3");
+    Music menu_music =  LoadMusicStream("assets/menu.mp3");
+
+    PlayMusicStream(menu_music);
+
     bool playing = false;
     bool board_init = false;
     Piece board[8][8];
@@ -645,9 +652,16 @@ int main(void)
                 check = false;
             }
             if (check) {
-                if (is_mate(board, turn, possible_moves, &possible_moves_count)) printf("Checkmate!\n");
-                WaitTime(6.0f);
-                playing = false;
+                possible_moves_count = 0;
+                if (is_mate(board, turn, possible_moves, &possible_moves_count)) {
+                    BeginDrawing();
+                        char* mate_msg = (turn == WH) ? "Checkmate, black wins!" : "Checkmate, white wins!";
+                        Vector2 mate_msg_pos = { .x = BOARD_SIZE, .y = SCREEN_HEIGHT / 2 - 30};
+                        DrawTextEx(papyrus, mate_msg, mate_msg_pos, 100.0f, 0.0f, WHITE);
+                    EndDrawing();
+                    playing = false;
+                    WaitTime(6.0f);
+                }
             }
             if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
                 Vector2 mouse_pos = GetMousePosition();
@@ -666,6 +680,11 @@ int main(void)
                 target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
                 if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count)) {
                     // NOTE: to disable move validation, change is_possible(...) to board_at(target_row, target_col).player != turn
+                    if (board_at(target_row, target_col).type == EMPTY) {
+                        PlaySound(move_sound);
+                    } else {
+                        PlaySound(capture_sound);
+                    }
                     board_at(target_row, target_col) = board_at(selected_row, selected_col);
                     board_at(target_row, target_col).row = target_row;
                     board_at(target_row, target_col).col = target_col;
@@ -700,6 +719,8 @@ int main(void)
             EndDrawing();
         } else {
             board_init = false;
+            
+            UpdateMusicStream(menu_music);
             BeginDrawing();
                 ClearBackground(BROWN);
                 now = GetTime();
@@ -716,10 +737,15 @@ int main(void)
                 offset_x = MeasureText(press_enter_text, size/2);
                 Vector2 press_enter_text_pos = { .x = SCREEN_WIDTH / 2 - offset_x / 4, .y = SCREEN_HEIGHT / 2 + 120};
                 DrawTextEx(papyrus, press_enter_text, press_enter_text_pos, size/2, 0, tint);
-                if (IsKeyPressed(KEY_ENTER)) playing = true;
+                if (IsKeyPressed(KEY_ENTER)) {
+                    playing = true;
+                    StopMusicStream(menu_music);
+                } 
             EndDrawing();
         }
     }
+    UnloadMusicStream(menu_music);
+    CloseAudioDevice();
     CloseWindow();
     return 0;
 }
