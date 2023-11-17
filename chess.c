@@ -608,7 +608,10 @@ bool is_mate(Piece board[8][8], Player turn, Move *possible_moves, int *count)
             if (board_at(r, c).player != turn) continue;
             calculate_possible_moves(board_at(r, c), board, possible_moves, count);
             validate_possible_moves(board_at(r, c), board, possible_moves, count, turn);
-            if (*count > 0) return false;
+            if (*count > 0) {
+                *count = 0;
+                return false;
+            }
             *count = 0;
         }
     }
@@ -652,7 +655,9 @@ int main(void)
                 check = false;
             }
             if (check) {
-                possible_moves_count = 0;
+                // TODO: there is a bug in the checkmate detection
+                // When trying to give scholar's mate, at the checkmate position, 
+                // for some reason the pawn at g2 can't go to g3
                 if (is_mate(board, turn, possible_moves, &possible_moves_count)) {
                     BeginDrawing();
                         char* mate_msg = (turn == WH) ? "Checkmate, black wins!" : "Checkmate, white wins!";
@@ -672,7 +677,7 @@ int main(void)
                     selected_piece = true;
                     board_at(selected_row, selected_col).selected = true;
                     calculate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count);
-                    if (check) validate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, turn);
+                    validate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, turn);
                 }
             } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
                 Vector2 mouse_pos = GetMousePosition();
