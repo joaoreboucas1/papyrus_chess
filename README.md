@@ -20,4 +20,4 @@ Just run the executable.
 
 ## TODO
 
-Figure out a way to ship the application. Since the font and assets
+Figure out a way to ship the application, since the font and assets are loaded dynamically.
