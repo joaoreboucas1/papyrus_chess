@@ -8,7 +8,7 @@ Papyrus chess is an *antique*-themed (i.e. ugly) chess program.
 
 ## Build Dependencies
 
-The developers who want to build the project by themselves must have `raylib` installed. The compilation process is usual:
+The developers who want to build the project by themselves must have [`raylib`](https://www.raylib.com/index.html) installed. The compilation process is usual:
 
 ```console
 $ gcc -o chess chess.c -lraylib
