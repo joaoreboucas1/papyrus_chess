@@ -1,5 +1,7 @@
 # Papyrus Chess
 
+![Menu screen](https://github.com/joaoreboucas1/papyrus_chess/blob/main/assets/menu.gif "Menu screen")
+
 **NOTE: this is a work in progress!**
 
 Papyrus chess is an *antique*-themed (i.e. ugly) chess program.
