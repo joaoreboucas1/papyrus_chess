@@ -10,6 +10,7 @@
 #define SCREEN_HEIGHT BOARD_SIZE
 #define SCREEN_WIDTH (BOARD_SIZE + SCREEN_HORIZ_PAD)
 #define POSSIBLE_MOVES_CAP 30
+#define MOVE_HISTORY_CAP 200
 
 typedef enum {
     WH, BL, NONE
@@ -26,7 +27,7 @@ typedef enum {
 typedef int Row;
 
 typedef enum {
-    MOVE, CAPTURE
+    MOVE, CAPTURE, EN_PASSANT
 } MoveType;
 
 typedef struct {
@@ -35,7 +36,8 @@ typedef struct {
 } Square;
 
 typedef struct {
-    Square target;
+    Square from;
+    Square to;
     MoveType type;
 } Move;
 
@@ -95,6 +97,7 @@ void DrawBackground()
 
 void DrawPieces(Piece board[8][8], Texture2D texture)
 {
+    // TODO: functions to convert between (row, col) and (screen_x, screen_y)
     int pad_x;
     int pad_y;
     Rectangle rec;
@@ -170,7 +173,7 @@ void DrawPieces(Piece board[8][8], Texture2D texture)
     }
 }
 
-void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, int *count)
+void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, unsigned int *count, Move last_move)
 {
     Row r;
     Column c;
@@ -178,22 +181,38 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
         int direction = (p.player == WH) ? 1 : -1;
         Row starting_row = (p.player == WH) ? 2 : 7;
         if (p.col + 1 <= H && board_at(p.row + direction, p.col + 1).player == 1 - p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row + direction, .col = p.col + 1};    
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col + 1};    
             possible_moves[*count].type = CAPTURE;
             (*count)++;
         }
         if (p.col - 1 >= A && board_at(p.row + direction, p.col - 1).player == 1 - p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row + direction, .col = p.col - 1};    
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col - 1};    
             possible_moves[*count].type = CAPTURE;
+            (*count)++;
+        }
+        if (p.col + 1 <= H && board_at(p.row, p.col + 1).type == PAWN && board_at(p.row, p.col + 1).player == 1 - p.player && board_at(last_move.to.row, last_move.to.col).type == PAWN && abs(last_move.from.row - last_move.to.row) == 2 && last_move.to.row == p.row && last_move.to.col == p.col + 1) {
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col + 1};    
+            possible_moves[*count].type = EN_PASSANT;
+            (*count)++;
+        }
+        if (p.col - 1 >= A && board_at(p.row, p.col - 1).type == PAWN && board_at(p.row, p.col - 1).player == 1 - p.player && board_at(last_move.to.row, last_move.to.col).type == PAWN && abs(last_move.from.row - last_move.to.row) == 2 && last_move.to.row == p.row && last_move.to.col == p.col - 1) {
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col - 1};    
+            possible_moves[*count].type = EN_PASSANT;
             (*count)++;
         }
         if (p.row == 1 || p.row == 8) return;
         if (board_at(p.row + direction, p.col).type != EMPTY) return;
-        possible_moves[*count].target = (Square) {.row = p.row + direction, .col = p.col};
+        possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+        possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col};
         possible_moves[*count].type = MOVE;
         (*count)++;
         if (board_at(p.row + 2*direction, p.col).type != EMPTY || p.row != starting_row) return;
-        possible_moves[*count].target = (Square) {.row = p.row + 2*direction, .col = p.col};
+        possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+        possible_moves[*count].to = (Square) {.row = p.row + 2*direction, .col = p.col};
         possible_moves[*count].type = MOVE;
         (*count)++;
         
@@ -201,42 +220,50 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
         // NOTE: the enum literals are of type unsigned int. If you have `Column c = 0;` and you decrement its value `c--;`, it goes to the maximum value of unsigned int
         // Therefore, before comparing them to the minimum values, if they might be negative (which is the case for col - 2), you must cast to int before the comparison
         if (p.row + 2 <= 8 && p.col + 1 <= H && board_at(p.row + 2, p.col + 1).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row + 2, .col = p.col + 1};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + 2, .col = p.col + 1};
             possible_moves[*count].type = (board_at(p.row + 2, p.col + 1).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if (p.row + 2 <= 8 && (int) p.col - 1 >= A && board_at(p.row + 2, p.col - 1).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row + 2, .col = p.col - 1};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + 2, .col = p.col - 1};
             possible_moves[*count].type = (board_at(p.row + 2, p.col - 1).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if ((int) p.row - 2 >= 1 && p.col + 1 <= H && board_at(p.row - 2, p.col + 1).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row - 2, .col = p.col + 1};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row - 2, .col = p.col + 1};
             possible_moves[*count].type = (board_at(p.row - 2, p.col + 1).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if ((int) p.row - 2 >= 1 && (int) p.col - 1 >= A && board_at(p.row - 2, p.col - 1).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row - 2, .col = p.col - 1};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row - 2, .col = p.col - 1};
             possible_moves[*count].type = (board_at(p.row - 2, p.col - 1).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if (p.row + 1 <= 8 && p.col + 2 <= H && board_at(p.row + 1, p.col + 2).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row + 1, .col = p.col + 2};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + 1, .col = p.col + 2};
             possible_moves[*count].type = (board_at(p.row + 1, p.col + 2).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if (p.row + 1 <= 8 && (int) p.col - 2 >= A && board_at(p.row + 1, p.col - 2).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row + 1, .col = p.col - 2};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row + 1, .col = p.col - 2};
             possible_moves[*count].type = (board_at(p.row + 1, p.col - 2).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if ((int) p.row - 1 >= 1 && p.col + 2 <= H && board_at(p.row - 1, p.col + 2).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row - 1, .col = p.col + 2};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row - 1, .col = p.col + 2};
             possible_moves[*count].type = (board_at(p.row - 1, p.col + 2).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
         if ((int) p.row - 1 >= 1 && (int) p.col - 2 >= A && board_at(p.row - 1, p.col - 2).player != p.player) {
-            possible_moves[*count].target = (Square) {.row = p.row - 1, .col = p.col - 2};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row - 1, .col = p.col - 2};
             possible_moves[*count].type = (board_at(p.row - 1, p.col - 2).player == NONE) ? MOVE : CAPTURE;
             (*count)++;
         }
@@ -248,13 +275,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -265,13 +294,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -282,13 +313,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -299,13 +332,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -315,13 +350,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (r > 8) break;
             if (board_at(r, p.col).type != EMPTY) {
                 if (board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -330,13 +367,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (r < 1) break;
             if (board_at(r, p.col).type != EMPTY) {
                 if (board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -345,13 +384,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (c > H) break;
             if (board_at(p.row, c).type != EMPTY) {
                 if (board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -360,13 +401,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (c < A) break;
             if (board_at(p.row, c).type != EMPTY) {
                 if (board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }        
@@ -378,13 +421,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -395,13 +440,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -412,13 +459,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -429,13 +478,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (board_at(r, c).type != EMPTY) {
                 if (board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                     break;
                 }
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -444,13 +495,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (r > 8) break;
             if (board_at(r, p.col).type != EMPTY) {
                 if (board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -459,13 +512,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (r < 1) break;
             if (board_at(r, p.col).type != EMPTY) {
                 if (board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = r, .col = p.col};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -474,13 +529,15 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             if (c > H) break;
             if (board_at(p.row, c).type != EMPTY) {
                 if (board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }
@@ -488,14 +545,16 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             c = p.col - i;
             if (c < A) break;
             if (board_at(p.row, c).type != EMPTY) {
+                possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
                 if (board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
                     possible_moves[*count].type = CAPTURE;
                     (*count)++;
                 } 
                 break;
             }
-            possible_moves[*count].target = (Square) {.row = p.row, .col = c};
+            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
             possible_moves[*count].type = MOVE;
             (*count)++;
         }        
@@ -506,7 +565,8 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
                 r = p.row + drow;
                 c = p.col + dcol;
                 if (r >= 1 && r <= 8 && c >= A && c <= H && board_at(r, c).player != p.player) {
-                    possible_moves[*count].target = (Square) {.row = r, .col = c};
+                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                    possible_moves[*count].to = (Square) {.row = r, .col = c};
                     possible_moves[*count].type = (board_at(r, c).player == NONE) ? MOVE : CAPTURE;
                     (*count)++;
                 }
@@ -521,17 +581,21 @@ void DrawPossibleMoves(Move possible_moves[POSSIBLE_MOVES_CAP], int possible_mov
 {
     const float r = 10.0f;
     for (int i = 0; i < possible_moves_count; i++) {
-        int x = (possible_moves[i].target.col - 1) * SQUARE_SIZE + SQUARE_SIZE/2;
-        int y = BOARD_SIZE - (possible_moves[i].target.row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
+        int x = (possible_moves[i].to.col - 1) * SQUARE_SIZE + SQUARE_SIZE/2;
+        int y = BOARD_SIZE - (possible_moves[i].to.row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
         if (possible_moves[i].type == MOVE) DrawCircle(x, y, r, GRAY);
         else if (possible_moves[i].type == CAPTURE) DrawCircle(x, y, r, RED);
+        else if (possible_moves[i].type == EN_PASSANT) DrawCircle(x, y, r, ORANGE);
     }
 }
 
-bool is_possible(Row r, Column c, Move possible_moves[POSSIBLE_MOVES_CAP], int possible_moves_count)
+bool is_possible(Row r, Column c, Move possible_moves[POSSIBLE_MOVES_CAP], unsigned int possible_moves_count, unsigned int *index)
 {
-    for (int i = 0; i < possible_moves_count; i++) {
-        if (possible_moves[i].target.row == r && possible_moves[i].target.col == c) return true;
+    for (unsigned int i = 0; i < possible_moves_count; i++) {
+        if (possible_moves[i].to.row == r && possible_moves[i].to.col == c) {
+            *index = i;
+            return true;   
+        }
     }
     return false;
 }
@@ -542,24 +606,26 @@ void find_king(Piece board[8][8], Player p, Square *king_square)
         for (int col = A; col <= H; col++) {
             if (board_at(row, col).player == p && board_at(row, col).type == KING) {
                 *king_square = (Square) {.row = row, .col = col};
+                return;
             } 
         }
     }
 }
 
-bool is_check(Piece board[8][8], Player turn)
+bool is_check(Piece board[8][8], Player turn, Move last_move)
 {
     Move possible_moves[POSSIBLE_MOVES_CAP];
-    int possible_moves_count = 0;
+    unsigned int possible_moves_count = 0;
     Square king_square;
+    unsigned int move_index;
     
     find_king(board, turn, &king_square);
     for (int row = 1; row <= 8; row++) {
         for (int col = A; col <= H; col++) {
             if (board_at(row, col).player != 1 - turn) continue;
-            calculate_possible_moves(board_at(row, col), board, possible_moves, &possible_moves_count);
+            calculate_possible_moves(board_at(row, col), board, possible_moves, &possible_moves_count, last_move);
             // printf("Piece (type = %d) at row = %d, col = %d has %d possible moves\n", board_at(row, col).type, row, col, possible_moves_count);
-            if (is_possible(king_square.row, king_square.col, possible_moves, possible_moves_count)) return true;
+            if (is_possible(king_square.row, king_square.col, possible_moves, possible_moves_count, &move_index)) return true;
             possible_moves_count = 0;
         }
     }
@@ -567,7 +633,7 @@ bool is_check(Piece board[8][8], Player turn)
 }
 
 #define next_board_at(row, col) next_board[row - 1][col - 1]
-void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, int *count, Player turn)
+void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, unsigned int *count, Player turn, Move last_move)
 {
     int new_count = 0;
     Piece next_board[8][8];
@@ -582,34 +648,34 @@ void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, i
             next_board[i][j] = board[i][j];
         }
     }
-    for (int i = 0; i < *count; i++) {
+    for (unsigned i = 0; i < *count; i++) {
         // Perform the move in the next_board
         move = possible_moves[i];
-        piece_at_target = next_board_at(move.target.row, move.target.col);
-        next_board_at(move.target.row, move.target.col) = next_board_at(p.row, p.col);
-        next_board_at(move.target.row, move.target.col).row = move.target.row;
-        next_board_at(move.target.row, move.target.col).col = move.target.col;
+        piece_at_target = next_board_at(move.to.row, move.to.col);
+        next_board_at(move.to.row, move.to.col) = next_board_at(p.row, p.col);
+        next_board_at(move.to.row, move.to.col).row = move.to.row;
+        next_board_at(move.to.row, move.to.col).col = move.to.col;
         next_board_at(p.row, p.col) = (Piece) {.type = EMPTY, .player = NONE, .row = p.row, .col = p.col, .selected = false};
-        check = is_check(next_board, turn);
+        check = is_check(next_board, turn, last_move);
         if (!check) {
             possible_moves[new_count] = move;
             new_count++;
         }
         next_board_at(p.row, p.col) = p;
-        next_board_at(move.target.row, move.target.col) = piece_at_target;
+        next_board_at(move.to.row, move.to.col) = piece_at_target;
     }
     *count = new_count;
 }
 
-bool is_mate(Piece board[8][8], Player turn)
+bool is_mate(Piece board[8][8], Player turn, Move last_move)
 {
     Move possible_moves[POSSIBLE_MOVES_CAP];
-    int count;
+    unsigned int count;
     for (Row r = 1; r <= 8; r++) {
         for (Column c = A; c <= H; c++) {
             if (board_at(r, c).player != turn) continue;
-            calculate_possible_moves(board_at(r, c), board, possible_moves, &count);
-            validate_possible_moves(board_at(r, c), board, possible_moves, &count, turn);
+            calculate_possible_moves(board_at(r, c), board, possible_moves, &count, last_move);
+            validate_possible_moves(board_at(r, c), board, possible_moves, &count, turn, last_move);
             if (count > 0) {
                 count = 0;
                 return false;
@@ -643,9 +709,16 @@ int main(void)
     Column target_col, selected_col;
     bool selected_piece = false;
     Move possible_moves[POSSIBLE_MOVES_CAP];
-    int possible_moves_count = 0;
+    unsigned int possible_moves_count = 0;
+    unsigned int move_index;
     bool check = false;
     float now;
+    Move last_move;
+
+    // TODO: implement move history
+
+    // TODO: implement castles and en passant
+    // TODO: fix checkmate screen
     
     while (!WindowShouldClose())
     {
@@ -657,7 +730,7 @@ int main(void)
                 check = false;
             }
             if (check) {
-                if (is_mate(board, turn)) {
+                if (is_mate(board, turn, last_move)) {
                     BeginDrawing();
                         char* mate_msg = (turn == WH) ? "Checkmate, black wins!" : "Checkmate, white wins!";
                         Vector2 mate_msg_pos = { .x = BOARD_SIZE, .y = SCREEN_HEIGHT / 2 - 30};
@@ -675,14 +748,14 @@ int main(void)
                     // NOTE: to turn off turn system, just remove board_at(selected_row, selected_col).player == turn
                     selected_piece = true;
                     board_at(selected_row, selected_col).selected = true;
-                    calculate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count);
-                    validate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, turn);
+                    calculate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, last_move);
+                    validate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, turn, last_move);
                 }
             } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
                 Vector2 mouse_pos = GetMousePosition();
                 target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                 target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count)) {
+                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count, &move_index)) {
                     // NOTE: to disable move validation, change is_possible(...) to board_at(target_row, target_col).player != turn
                     if (board_at(target_row, target_col).type == EMPTY) {
                         PlaySound(move_sound);
@@ -694,8 +767,12 @@ int main(void)
                     board_at(target_row, target_col).col = target_col;
                     board_at(target_row, target_col).selected = false;
                     board_at(selected_row, selected_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
+                    if (possible_moves[move_index].type == EN_PASSANT) {
+                        board_at(selected_row, target_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
+                    } 
+                    last_move = possible_moves[move_index];
                     turn = 1 - turn;
-                    check = is_check(board, turn);
+                    check = is_check(board, turn, last_move);
                 } else {
                     board_at(selected_row, selected_col).selected = false;
                 }
