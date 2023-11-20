@@ -27,7 +27,7 @@ typedef enum {
 typedef int Row;
 
 typedef enum {
-    MOVE, CAPTURE, EN_PASSANT
+    MOVE, CAPTURE, EN_PASSANT, CASTLES_SHORT, CASTLES_LONG
 } MoveType;
 
 typedef struct {
@@ -48,6 +48,8 @@ typedef struct {
     Column col;
     bool selected;
 } Piece;
+
+bool is_threatened(Row, Column, Piece [8][8], Player, Move, bool[2], bool[2]);
 
 #define board_at(row, col) board[row - 1][col - 1]
 void initialize_board(Piece board[8][8])
@@ -173,7 +175,7 @@ void DrawPieces(Piece board[8][8], Texture2D texture)
     }
 }
 
-void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, unsigned int *count, Move last_move)
+void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, unsigned int *count, Move last_move, bool can_castle_short[2], bool can_castle_long[2])
 {
     Row r;
     Column c;
@@ -559,6 +561,24 @@ void calculate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, 
             (*count)++;
         }        
     } else if (p.type == KING) {
+        if (can_castle_short[p.player]) {
+            // TODO: we might wanna make an assertion that the king and the rook are on their initial squares
+            if (board_at(p.row, p.col + 1).type == EMPTY && board_at(p.row, p.col + 2).type == EMPTY && !is_threatened(p.row, p.col + 1, board, 1 - p.player, last_move, can_castle_short, can_castle_long) && !is_threatened(p.row, p.col + 2, board, 1 - p.player, last_move, can_castle_short, can_castle_long)) {
+                possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                possible_moves[*count].to = (Square) {.row = p.row, .col = p.col + 2};
+                possible_moves[*count].type = CASTLES_SHORT;
+                (*count)++;
+            }
+        }
+        if (can_castle_long[p.player]) {
+            // TODO: we might wanna make an assertion that the king and the rook are on their initial squares
+            if (board_at(p.row, p.col - 1).type == EMPTY && board_at(p.row, p.col - 2).type == EMPTY && board_at(p.row, p.col - 3).type == EMPTY && !is_threatened(p.row, p.col - 1, board, 1 - p.player, last_move, can_castle_short, can_castle_long) && !is_threatened(p.row, p.col - 2, board, 1 - p.player, last_move, can_castle_short, can_castle_long) && !is_threatened(p.row, p.col - 3, board, 1 - p.player, last_move, can_castle_short, can_castle_long)) {
+                possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
+                possible_moves[*count].to = (Square) {.row = p.row, .col = p.col - 2};
+                possible_moves[*count].type = CASTLES_LONG;
+                (*count)++;
+            }
+        }
         for (int drow = -1; drow <= 1; drow++) {
             for (int dcol = -1; dcol <= 1; dcol++) {
                 if (drow == 0 && dcol == 0) continue;
@@ -583,9 +603,8 @@ void DrawPossibleMoves(Move possible_moves[POSSIBLE_MOVES_CAP], int possible_mov
     for (int i = 0; i < possible_moves_count; i++) {
         int x = (possible_moves[i].to.col - 1) * SQUARE_SIZE + SQUARE_SIZE/2;
         int y = BOARD_SIZE - (possible_moves[i].to.row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
-        if (possible_moves[i].type == MOVE) DrawCircle(x, y, r, GRAY);
-        else if (possible_moves[i].type == CAPTURE) DrawCircle(x, y, r, RED);
-        else if (possible_moves[i].type == EN_PASSANT) DrawCircle(x, y, r, ORANGE);
+        if (possible_moves[i].type == MOVE || possible_moves[i].type == CASTLES_SHORT || possible_moves[i].type == CASTLES_LONG) DrawCircle(x, y, r, GRAY);
+        else if (possible_moves[i].type == CAPTURE || possible_moves[i].type == EN_PASSANT) DrawCircle(x, y, r, RED);
     }
 }
 
@@ -612,7 +631,7 @@ void find_king(Piece board[8][8], Player p, Square *king_square)
     }
 }
 
-bool is_check(Piece board[8][8], Player turn, Move last_move)
+bool is_check(Piece board[8][8], Player turn, Move last_move, bool can_castle_short[2], bool can_castle_long[2])
 {
     Move possible_moves[POSSIBLE_MOVES_CAP];
     unsigned int possible_moves_count = 0;
@@ -623,8 +642,8 @@ bool is_check(Piece board[8][8], Player turn, Move last_move)
     for (int row = 1; row <= 8; row++) {
         for (int col = A; col <= H; col++) {
             if (board_at(row, col).player != 1 - turn) continue;
-            calculate_possible_moves(board_at(row, col), board, possible_moves, &possible_moves_count, last_move);
-            // printf("Piece (type = %d) at row = %d, col = %d has %d possible moves\n", board_at(row, col).type, row, col, possible_moves_count);
+            if (board_at(row, col).type == KING) continue;
+            calculate_possible_moves(board_at(row, col), board, possible_moves, &possible_moves_count, last_move, can_castle_short, can_castle_long);
             if (is_possible(king_square.row, king_square.col, possible_moves, possible_moves_count, &move_index)) return true;
             possible_moves_count = 0;
         }
@@ -633,7 +652,7 @@ bool is_check(Piece board[8][8], Player turn, Move last_move)
 }
 
 #define next_board_at(row, col) next_board[row - 1][col - 1]
-void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, unsigned int *count, Player turn, Move last_move)
+void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, unsigned int *count, Player turn, Move last_move, bool can_castle_short[2], bool can_castle_long[2])
 {
     int new_count = 0;
     Piece next_board[8][8];
@@ -656,7 +675,7 @@ void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, u
         next_board_at(move.to.row, move.to.col).row = move.to.row;
         next_board_at(move.to.row, move.to.col).col = move.to.col;
         next_board_at(p.row, p.col) = (Piece) {.type = EMPTY, .player = NONE, .row = p.row, .col = p.col, .selected = false};
-        check = is_check(next_board, turn, last_move);
+        check = is_check(next_board, turn, last_move, can_castle_short, can_castle_long);
         if (!check) {
             possible_moves[new_count] = move;
             new_count++;
@@ -667,15 +686,33 @@ void validate_possible_moves(Piece p, Piece board[8][8], Move *possible_moves, u
     *count = new_count;
 }
 
-bool is_mate(Piece board[8][8], Player turn, Move last_move)
+bool is_threatened(Row row, Column col, Piece board[8][8], Player p, Move last_move, bool can_castle_short[2], bool can_castle_long[2])
+{
+    Move possible_moves[POSSIBLE_MOVES_CAP];
+    unsigned int possible_moves_count = 0;
+    unsigned int move_index;
+    for (Row r = 1; r <= 8; r++) {
+        for (Column c = A; c <= H; c++) {
+            if (board_at(r, c).player != p) continue;
+            if (board_at(r, c).type == KING) continue;
+            calculate_possible_moves(board_at(r, c), board, possible_moves, &possible_moves_count, last_move, can_castle_short, can_castle_long);
+            validate_possible_moves(board_at(r, c), board, possible_moves, &possible_moves_count, p, last_move, can_castle_short, can_castle_long);
+            if (is_possible(row, col, possible_moves, possible_moves_count, &move_index)) return true;
+            possible_moves_count = 0;
+        }
+    }
+    return false;
+}
+
+bool is_mate(Piece board[8][8], Player turn, Move last_move, bool can_castle_short[2], bool can_castle_long[2])
 {
     Move possible_moves[POSSIBLE_MOVES_CAP];
     unsigned int count;
     for (Row r = 1; r <= 8; r++) {
         for (Column c = A; c <= H; c++) {
             if (board_at(r, c).player != turn) continue;
-            calculate_possible_moves(board_at(r, c), board, possible_moves, &count, last_move);
-            validate_possible_moves(board_at(r, c), board, possible_moves, &count, turn, last_move);
+            calculate_possible_moves(board_at(r, c), board, possible_moves, &count, last_move, can_castle_short, can_castle_long);
+            validate_possible_moves(board_at(r, c), board, possible_moves, &count, turn, last_move, can_castle_short, can_castle_long);
             if (count > 0) {
                 count = 0;
                 return false;
@@ -701,6 +738,8 @@ int main(void)
 
     PlayMusicStream(menu_music);
 
+    // TODO: create a struct GameContext to hold all metadata
+    // including board, turn, last move, castling privileges
     bool playing = false;
     bool board_init = false;
     Piece board[8][8];
@@ -714,11 +753,14 @@ int main(void)
     bool check = false;
     float now;
     Move last_move;
+    bool can_castle_short[2] = {true, true};
+    bool can_castle_long[2] = {true, true};
+    const Row back_row[2] = {1, 8};
 
     // TODO: implement move history
-
-    // TODO: implement castles and en passant
-    // TODO: fix checkmate screen
+    // TODO: implement castles
+    // TODO: implement promotion
+    // TODO: fix checkmate screen, figure out a better way to manage the user flow
     
     while (!WindowShouldClose())
     {
@@ -730,7 +772,7 @@ int main(void)
                 check = false;
             }
             if (check) {
-                if (is_mate(board, turn, last_move)) {
+                if (is_mate(board, turn, last_move, can_castle_short, can_castle_long)) {
                     BeginDrawing();
                         char* mate_msg = (turn == WH) ? "Checkmate, black wins!" : "Checkmate, white wins!";
                         Vector2 mate_msg_pos = { .x = BOARD_SIZE, .y = SCREEN_HEIGHT / 2 - 30};
@@ -748,8 +790,8 @@ int main(void)
                     // NOTE: to turn off turn system, just remove board_at(selected_row, selected_col).player == turn
                     selected_piece = true;
                     board_at(selected_row, selected_col).selected = true;
-                    calculate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, last_move);
-                    validate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, turn, last_move);
+                    calculate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, last_move, can_castle_short, can_castle_long);
+                    validate_possible_moves(board_at(selected_row, selected_col), board, possible_moves, &possible_moves_count, turn, last_move, can_castle_short, can_castle_long);
                 }
             } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
                 Vector2 mouse_pos = GetMousePosition();
@@ -762,6 +804,16 @@ int main(void)
                     } else {
                         PlaySound(capture_sound);
                     }
+
+                    // Update check privileges
+                    if (board_at(selected_row, selected_col).type == KING || possible_moves[move_index].type == CASTLES_SHORT || possible_moves[move_index].type == CASTLES_LONG) {
+                        can_castle_short[turn] = false;
+                        can_castle_long[turn] = false;
+                    } else if (board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[turn] && selected_col == A) {
+                        can_castle_long[turn] = false;
+                    } else if (board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[turn] && selected_col == H) {
+                        can_castle_short[turn] = false;
+                    }
                     board_at(target_row, target_col) = board_at(selected_row, selected_col);
                     board_at(target_row, target_col).row = target_row;
                     board_at(target_row, target_col).col = target_col;
@@ -769,10 +821,18 @@ int main(void)
                     board_at(selected_row, selected_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
                     if (possible_moves[move_index].type == EN_PASSANT) {
                         board_at(selected_row, target_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
-                    } 
+                    } else if (possible_moves[move_index].type == CASTLES_SHORT) {
+                        board_at(target_row, target_col - 1) = board_at(target_row, target_col + 1);
+                        board_at(target_row, target_col - 1).col = target_col - 1;
+                        board_at(target_row, target_col + 1) =  (Piece) {.type = EMPTY, .player = NONE, .row = target_row, .col = target_col + 1, .selected = false};
+                    } else if (possible_moves[move_index].type == CASTLES_LONG) {
+                        board_at(target_row, target_col + 1) = board_at(target_row, A);
+                        board_at(target_row, target_col + 1).col = target_col + 1;
+                        board_at(target_row, A) =  (Piece) {.type = EMPTY, .player = NONE, .row = target_row, .col = A, .selected = false};
+                    }
                     last_move = possible_moves[move_index];
                     turn = 1 - turn;
-                    check = is_check(board, turn, last_move);
+                    check = is_check(board, turn, last_move, can_castle_short, can_castle_long);
                 } else {
                     board_at(selected_row, selected_col).selected = false;
                 }
