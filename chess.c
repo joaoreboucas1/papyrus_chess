@@ -9,7 +9,7 @@
 #define SCREEN_HORIZ_PAD 400
 #define SCREEN_HEIGHT BOARD_SIZE
 #define SCREEN_WIDTH (BOARD_SIZE + SCREEN_HORIZ_PAD)
-#define POSSIBLE_MOVES_CAP 30
+#define MOVE_BUFFER_CAP 30
 #define MOVE_HISTORY_CAP 200
 
 typedef enum {
@@ -57,6 +57,16 @@ typedef struct {
     bool can_castle_short[2];
     bool can_castle_long[2];
 } GameContext;
+
+typedef struct {
+    Move moves[MOVE_BUFFER_CAP];
+    unsigned int count;
+} MoveBuffer;
+
+static inline void flush_move_buffer(MoveBuffer *buf)
+{
+    buf->count = 0;
+}
 
 bool is_threatened(Row, Column, Player, GameContext);
 
@@ -195,7 +205,16 @@ void DrawPieces(GameContext ctx, Texture2D texture)
     }
 }
 
-void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count, GameContext ctx)
+void allocate_move(Square from, Square to, MoveType type, MoveBuffer *buf)
+{
+    buf->moves[buf->count].from = from;
+    buf->moves[buf->count].to = to;    
+    buf->moves[buf->count].type = type;
+    (buf->count)++;
+    printf("Move buffer has %d moves\n", buf->count);
+}
+
+void calculate_possible_moves(Piece p, MoveBuffer *possible_moves, GameContext ctx)
 {
     Row r;
     Column c;
@@ -203,91 +222,49 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
         int direction = (p.player == WH) ? 1 : -1;
         Row starting_row = (p.player == WH) ? 2 : 7;
         if (p.col + 1 <= H && ctx.board_at(p.row + direction, p.col + 1).player == 1 - p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col + 1};    
-            possible_moves[*count].type = CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + direction, .col = p.col + 1}, CAPTURE, possible_moves);
         }
         if (p.col - 1 >= A && ctx.board_at(p.row + direction, p.col - 1).player == 1 - p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col - 1};    
-            possible_moves[*count].type = CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + direction, .col = p.col - 1}, CAPTURE, possible_moves);
         }
         if (p.col + 1 <= H && ctx.board_at(p.row, p.col + 1).type == PAWN && ctx.board_at(p.row, p.col + 1).player == 1 - p.player && ctx.board_at(ctx.last_move.to.row, ctx.last_move.to.col).type == PAWN && abs(ctx.last_move.from.row - ctx.last_move.to.row) == 2 && ctx.last_move.to.row == p.row && ctx.last_move.to.col == p.col + 1) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col + 1};    
-            possible_moves[*count].type = EN_PASSANT;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + direction, .col = p.col + 1}, EN_PASSANT, possible_moves);
         }
         if (p.col - 1 >= A && ctx.board_at(p.row, p.col - 1).type == PAWN && ctx.board_at(p.row, p.col - 1).player == 1 - p.player && ctx.board_at(ctx.last_move.to.row, ctx.last_move.to.col).type == PAWN && abs(ctx.last_move.from.row - ctx.last_move.to.row) == 2 && ctx.last_move.to.row == p.row && ctx.last_move.to.col == p.col - 1) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col - 1};    
-            possible_moves[*count].type = EN_PASSANT;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + direction, .col = p.col - 1}, EN_PASSANT, possible_moves);
         }
         if (p.row == 1 || p.row == 8) return;
         if (ctx.board_at(p.row + direction, p.col).type != EMPTY) return;
-        possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-        possible_moves[*count].to = (Square) {.row = p.row + direction, .col = p.col};
-        possible_moves[*count].type = MOVE;
-        (*count)++;
-        if (ctx.board_at(p.row + 2*direction, p.col).type != EMPTY || p.row != starting_row) return;
-        possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-        possible_moves[*count].to = (Square) {.row = p.row + 2*direction, .col = p.col};
-        possible_moves[*count].type = MOVE;
-        (*count)++;
+        allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + direction, .col = p.col}, MOVE, possible_moves);
         
+        if (ctx.board_at(p.row + 2*direction, p.col).type != EMPTY || p.row != starting_row) return;
+        allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + 2*direction, .col = p.col}, MOVE, possible_moves);        
     } else if (p.type == KNIGHT) {
         // NOTE: the enum literals are of type unsigned int. If you have `Column c = 0;` and you decrement its value `c--;`, it goes to the maximum value of unsigned int
         // Therefore, before comparing them to the minimum values, if they might be negative (which is the case for col - 2), you must cast to int before the comparison
         if (p.row + 2 <= 8 && p.col + 1 <= H && ctx.board_at(p.row + 2, p.col + 1).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + 2, .col = p.col + 1};
-            possible_moves[*count].type = (ctx.board_at(p.row + 2, p.col + 1).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + 2, .col = p.col + 1}, (ctx.board_at(p.row + 2, p.col + 1).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if (p.row + 2 <= 8 && (int) p.col - 1 >= A && ctx.board_at(p.row + 2, p.col - 1).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + 2, .col = p.col - 1};
-            possible_moves[*count].type = (ctx.board_at(p.row + 2, p.col - 1).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + 2, .col = p.col - 1}, (ctx.board_at(p.row + 2, p.col - 1).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if ((int) p.row - 2 >= 1 && p.col + 1 <= H && ctx.board_at(p.row - 2, p.col + 1).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row - 2, .col = p.col + 1};
-            possible_moves[*count].type = (ctx.board_at(p.row - 2, p.col + 1).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row - 2, .col = p.col + 1}, (ctx.board_at(p.row - 2, p.col + 1).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if ((int) p.row - 2 >= 1 && (int) p.col - 1 >= A && ctx.board_at(p.row - 2, p.col - 1).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row - 2, .col = p.col - 1};
-            possible_moves[*count].type = (ctx.board_at(p.row - 2, p.col - 1).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row - 2, .col = p.col - 1}, (ctx.board_at(p.row - 2, p.col - 1).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if (p.row + 1 <= 8 && p.col + 2 <= H && ctx.board_at(p.row + 1, p.col + 2).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + 1, .col = p.col + 2};
-            possible_moves[*count].type = (ctx.board_at(p.row + 1, p.col + 2).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + 1, .col = p.col + 2}, (ctx.board_at(p.row + 1, p.col + 2).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if (p.row + 1 <= 8 && (int) p.col - 2 >= A && ctx.board_at(p.row + 1, p.col - 2).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row + 1, .col = p.col - 2};
-            possible_moves[*count].type = (ctx.board_at(p.row + 1, p.col - 2).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row + 1, .col = p.col - 2}, (ctx.board_at(p.row + 1, p.col - 2).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if ((int) p.row - 1 >= 1 && p.col + 2 <= H && ctx.board_at(p.row - 1, p.col + 2).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row - 1, .col = p.col + 2};
-            possible_moves[*count].type = (ctx.board_at(p.row - 1, p.col + 2).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row - 1, .col = p.col + 2}, (ctx.board_at(p.row - 1, p.col + 2).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
         if ((int) p.row - 1 >= 1 && (int) p.col - 2 >= A && ctx.board_at(p.row - 1, p.col - 2).player != p.player) {
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row - 1, .col = p.col - 2};
-            possible_moves[*count].type = (ctx.board_at(p.row - 1, p.col - 2).player == NONE) ? MOVE : CAPTURE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row - 1, .col = p.col - 2}, (ctx.board_at(p.row - 1, p.col - 2).player == NONE) ? MOVE : CAPTURE, possible_moves);
         }
     } else if (p.type == BISHOP) {
         for (int i = 1; i < 8; i++) {
@@ -297,17 +274,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row - i;
@@ -316,17 +287,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row + i;
@@ -335,17 +300,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row - i;
@@ -354,17 +313,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
     } else if (p.type == ROOK) {
         for (int i = 1; i < 8; i++) {
@@ -372,68 +325,44 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (r > 8) break;
             if (ctx.board_at(r, p.col).type != EMPTY) {
                 if (ctx.board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row - i;
             if (r < 1) break;
             if (ctx.board_at(r, p.col).type != EMPTY) {
                 if (ctx.board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             c = p.col + i;
             if (c > H) break;
             if (ctx.board_at(p.row, c).type != EMPTY) {
                 if (ctx.board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             c = p.col - i;
             if (c < A) break;
             if (ctx.board_at(p.row, c).type != EMPTY) {
                 if (ctx.board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, MOVE, possible_moves);
         }        
     } else if (p.type == QUEEN) {
         for (int i = 1; i < 8; i++) {
@@ -443,17 +372,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row - i;
@@ -462,17 +385,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row + i;
@@ -481,17 +398,11 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row - i;
@@ -500,103 +411,67 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
             if (ctx.board_at(r, c).type != EMPTY) {
                 if (ctx.board_at(r, c).player == p.player) {break;}
                 else {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, CAPTURE, possible_moves);
                     break;
                 }
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row + i;
             if (r > 8) break;
             if (ctx.board_at(r, p.col).type != EMPTY) {
                 if (ctx.board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             r = p.row - i;
             if (r < 1) break;
             if (ctx.board_at(r, p.col).type != EMPTY) {
                 if (ctx.board_at(r, p.col).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = r, .col = p.col};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = p.col}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             c = p.col + i;
             if (c > H) break;
             if (ctx.board_at(p.row, c).type != EMPTY) {
                 if (ctx.board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, MOVE, possible_moves);
         }
         for (int i = 1; i < 8; i++) {
             c = p.col - i;
             if (c < A) break;
             if (ctx.board_at(p.row, c).type != EMPTY) {
-                possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
                 if (ctx.board_at(p.row, c).player == 1 - p.player) {
-                    possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-                    possible_moves[*count].type = CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, CAPTURE, possible_moves);
                 } 
                 break;
             }
-            possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-            possible_moves[*count].to = (Square) {.row = p.row, .col = c};
-            possible_moves[*count].type = MOVE;
-            (*count)++;
-        }        
+            allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = c}, MOVE, possible_moves);
+        }
     } else if (p.type == KING) {
         if (ctx.can_castle_short[p.player]) {
             // TODO: we might wanna make an assertion that the king and the rook are on their initial squares
             if (ctx.board_at(p.row, p.col + 1).type == EMPTY && ctx.board_at(p.row, p.col + 2).type == EMPTY && !is_threatened(p.row, p.col + 1, 1 - p.player, ctx) && !is_threatened(p.row, p.col + 2, 1 - p.player, ctx)) {
-                possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                possible_moves[*count].to = (Square) {.row = p.row, .col = p.col + 2};
-                possible_moves[*count].type = CASTLES_SHORT;
-                (*count)++;
+                allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = p.col + 2}, CASTLES_SHORT, possible_moves);
             }
         }
         if (ctx.can_castle_long[p.player]) {
             // TODO: we might wanna make an assertion that the king and the rook are on their initial squares
             if (ctx.board_at(p.row, p.col - 1).type == EMPTY && ctx.board_at(p.row, p.col - 2).type == EMPTY && ctx.board_at(p.row, p.col - 3).type == EMPTY && !is_threatened(p.row, p.col - 1, 1 - p.player, ctx) && !is_threatened(p.row, p.col - 2, 1 - p.player, ctx) && !is_threatened(p.row, p.col - 3, 1 - p.player, ctx)) {
-                possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                possible_moves[*count].to = (Square) {.row = p.row, .col = p.col - 2};
-                possible_moves[*count].type = CASTLES_LONG;
-                (*count)++;
+                allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = p.row, .col = p.col - 2}, CASTLES_LONG, possible_moves);
             }
         }
         for (int drow = -1; drow <= 1; drow++) {
@@ -605,10 +480,7 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
                 r = p.row + drow;
                 c = p.col + dcol;
                 if (r >= 1 && r <= 8 && c >= A && c <= H && ctx.board_at(r, c).player != p.player) {
-                    possible_moves[*count].from = (Square) { .row = p.row, .col = p.col};
-                    possible_moves[*count].to = (Square) {.row = r, .col = c};
-                    possible_moves[*count].type = (ctx.board_at(r, c).player == NONE) ? MOVE : CAPTURE;
-                    (*count)++;
+                    allocate_move((Square) { .row = p.row, .col = p.col}, (Square) {.row = r, .col = c}, (ctx.board_at(r, c).player == NONE) ? MOVE : CAPTURE, possible_moves);
                 }
             }
         }        
@@ -617,21 +489,21 @@ void calculate_possible_moves(Piece p, Move *possible_moves, unsigned int *count
     }
 }
 
-void DrawPossibleMoves(Move possible_moves[POSSIBLE_MOVES_CAP], int possible_moves_count)
+void DrawPossibleMoves(MoveBuffer possible_moves)
 {
     const float r = 10.0f;
-    for (int i = 0; i < possible_moves_count; i++) {
-        int x = (possible_moves[i].to.col - 1) * SQUARE_SIZE + SQUARE_SIZE/2;
-        int y = BOARD_SIZE - (possible_moves[i].to.row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
-        if (possible_moves[i].type == MOVE || possible_moves[i].type == CASTLES_SHORT || possible_moves[i].type == CASTLES_LONG) DrawCircle(x, y, r, GRAY);
-        else if (possible_moves[i].type == CAPTURE || possible_moves[i].type == EN_PASSANT) DrawCircle(x, y, r, RED);
+    for (unsigned int i = 0; i < possible_moves.count; i++) {
+        int x = (possible_moves.moves[i].to.col - 1) * SQUARE_SIZE + SQUARE_SIZE/2;
+        int y = BOARD_SIZE - (possible_moves.moves[i].to.row - 1) * SQUARE_SIZE - SQUARE_SIZE/2;
+        if (possible_moves.moves[i].type == MOVE || possible_moves.moves[i].type == CASTLES_SHORT || possible_moves.moves[i].type == CASTLES_LONG) DrawCircle(x, y, r, GRAY);
+        else if (possible_moves.moves[i].type == CAPTURE || possible_moves.moves[i].type == EN_PASSANT) DrawCircle(x, y, r, RED);
     }
 }
 
-bool is_possible(Row r, Column c, Move possible_moves[POSSIBLE_MOVES_CAP], unsigned int possible_moves_count, unsigned int *index)
+bool is_possible(Row r, Column c, MoveBuffer possible_moves, unsigned int *index)
 {
-    for (unsigned int i = 0; i < possible_moves_count; i++) {
-        if (possible_moves[i].to.row == r && possible_moves[i].to.col == c) {
+    for (unsigned int i = 0; i < possible_moves.count; i++) {
+        if (possible_moves.moves[i].to.row == r && possible_moves.moves[i].to.col == c) {
             *index = i;
             return true;   
         }
@@ -653,8 +525,7 @@ void find_king(GameContext ctx, Player p, Square *king_square)
 
 bool is_check(GameContext ctx)
 {
-    Move possible_moves[POSSIBLE_MOVES_CAP];
-    unsigned int possible_moves_count = 0;
+    MoveBuffer possible_moves;
     Square king_square;
     unsigned int move_index;
     
@@ -663,15 +534,15 @@ bool is_check(GameContext ctx)
         for (int col = A; col <= H; col++) {
             if (ctx.board_at(row, col).player != 1 - ctx.turn) continue;
             if (ctx.board_at(row, col).type == KING) continue;
-            calculate_possible_moves(ctx.board_at(row, col), possible_moves, &possible_moves_count, ctx);
-            if (is_possible(king_square.row, king_square.col, possible_moves, possible_moves_count, &move_index)) return true;
-            possible_moves_count = 0;
+            calculate_possible_moves(ctx.board_at(row, col), &possible_moves, ctx);
+            if (is_possible(king_square.row, king_square.col, possible_moves, &move_index)) return true;
+            flush_move_buffer(&possible_moves);
         }
     }
     return false;
 }
 
-void validate_possible_moves(Piece p, Move *possible_moves, unsigned int *count, GameContext ctx)
+void validate_possible_moves(Piece p, MoveBuffer *possible_moves, GameContext ctx)
 {
     int new_count = 0;
     GameContext next_ctx = ctx;
@@ -679,11 +550,11 @@ void validate_possible_moves(Piece p, Move *possible_moves, unsigned int *count,
     Move move;
     bool check;
 
-    if (*count == 0) return;
+    if (possible_moves->count == 0) return;
 
-    for (unsigned i = 0; i < *count; i++) {
+    for (unsigned i = 0; i < possible_moves->count; i++) {
         // Perform the move in the next_board
-        move = possible_moves[i];
+        move = possible_moves->moves[i];
         piece_at_target = next_ctx.board_at(move.to.row, move.to.col);
         next_ctx.board_at(move.to.row, move.to.col) = next_ctx.board_at(p.row, p.col);
         next_ctx.board_at(move.to.row, move.to.col).row = move.to.row;
@@ -691,28 +562,27 @@ void validate_possible_moves(Piece p, Move *possible_moves, unsigned int *count,
         next_ctx.board_at(p.row, p.col) = (Piece) {.type = EMPTY, .player = NONE, .row = p.row, .col = p.col, .selected = false};
         check = is_check(next_ctx);
         if (!check) {
-            possible_moves[new_count] = move;
+            possible_moves->moves[new_count] = move;
             new_count++;
         }
         next_ctx.board_at(p.row, p.col) = p;
         next_ctx.board_at(move.to.row, move.to.col) = piece_at_target;
     }
-    *count = new_count;
+    possible_moves->count = new_count;
 }
 
 bool is_threatened(Row row, Column col, Player p, GameContext ctx)
 {
-    Move possible_moves[POSSIBLE_MOVES_CAP];
-    unsigned int possible_moves_count = 0;
+    MoveBuffer possible_moves;
     unsigned int move_index;
     for (Row r = 1; r <= 8; r++) {
         for (Column c = A; c <= H; c++) {
             if (ctx.board_at(r, c).player != p) continue;
             if (ctx.board_at(r, c).type == KING) continue;
-            calculate_possible_moves(ctx.board_at(r, c), possible_moves, &possible_moves_count, ctx);
-            validate_possible_moves(ctx.board_at(r, c), possible_moves, &possible_moves_count, ctx);
-            if (is_possible(row, col, possible_moves, possible_moves_count, &move_index)) return true;
-            possible_moves_count = 0;
+            calculate_possible_moves(ctx.board_at(r, c), &possible_moves, ctx);
+            validate_possible_moves(ctx.board_at(r, c), &possible_moves, ctx);
+            if (is_possible(row, col, possible_moves, &move_index)) return true;
+            flush_move_buffer(&possible_moves);
         }
     }
     return false;
@@ -720,18 +590,16 @@ bool is_threatened(Row row, Column col, Player p, GameContext ctx)
 
 bool is_mate(GameContext ctx)
 {
-    Move possible_moves[POSSIBLE_MOVES_CAP];
-    unsigned int count;
+    MoveBuffer possible_moves;
     for (Row r = 1; r <= 8; r++) {
         for (Column c = A; c <= H; c++) {
             if (ctx.board_at(r, c).player != ctx.turn) continue;
-            calculate_possible_moves(ctx.board_at(r, c), possible_moves, &count, ctx);
-            validate_possible_moves(ctx.board_at(r, c), possible_moves, &count, ctx);
-            if (count > 0) {
-                count = 0;
+            calculate_possible_moves(ctx.board_at(r, c), &possible_moves, ctx);
+            validate_possible_moves(ctx.board_at(r, c), &possible_moves, ctx);
+            if (possible_moves.count > 0) {
                 return false;
             }
-            count = 0;
+            flush_move_buffer(&possible_moves);
         }
     }
     printf("Hi!\n");
@@ -760,8 +628,8 @@ int main(void)
     Row target_row, selected_row;
     Column target_col, selected_col;
     bool selected_piece = false;
-    Move possible_moves[POSSIBLE_MOVES_CAP];
-    unsigned int possible_moves_count = 0;
+    bool calculated_moves = false;
+    MoveBuffer possible_moves;
     unsigned int move_index;
     float now;
     const Row back_row[2] = {1, 8};
@@ -777,7 +645,7 @@ int main(void)
         if (playing) {
             if (!board_init) {
                 initialize_game(&ctx);
-                possible_moves_count = 0; // Flushing the move buffer just to assure that we don't have junk data from a previous game
+                flush_move_buffer(&possible_moves); // Just to assure that we don't have junk data from a previous game
                 board_init = true;
             }
             if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
@@ -788,14 +656,16 @@ int main(void)
                     // NOTE: to turn off turn system, just remove ctx.board_at(selected_row, selected_col).player == turn
                     selected_piece = true;
                     ctx.board_at(selected_row, selected_col).selected = true;
-                    calculate_possible_moves(ctx.board_at(selected_row, selected_col), possible_moves, &possible_moves_count, ctx);
-                    validate_possible_moves(ctx.board_at(selected_row, selected_col), possible_moves, &possible_moves_count, ctx);
+                    if (!calculated_moves) {
+                        calculate_possible_moves(ctx.board_at(selected_row, selected_col), &possible_moves, ctx);
+                        validate_possible_moves(ctx.board_at(selected_row, selected_col), &possible_moves, ctx);
+                    }
                 }
             } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
                 Vector2 mouse_pos = GetMousePosition();
                 target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                 target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, possible_moves_count, &move_index)) {
+                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
                     // NOTE: to disable move validation, change is_possible(...) to ctx.board_at(target_row, target_col).player != turn
                     if (ctx.board_at(target_row, target_col).type == EMPTY) {
                         PlaySound(move_sound);
@@ -804,7 +674,7 @@ int main(void)
                     }
 
                     // Update check privileges
-                    if (ctx.board_at(selected_row, selected_col).type == KING || possible_moves[move_index].type == CASTLES_SHORT || possible_moves[move_index].type == CASTLES_LONG) {
+                    if (ctx.board_at(selected_row, selected_col).type == KING || possible_moves.moves[move_index].type == CASTLES_SHORT || possible_moves.moves[move_index].type == CASTLES_LONG) {
                         ctx.can_castle_short[ctx.turn] = false;
                         ctx.can_castle_long[ctx.turn] = false;
                     } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == A) {
@@ -817,18 +687,19 @@ int main(void)
                     ctx.board_at(target_row, target_col).col = target_col;
                     ctx.board_at(target_row, target_col).selected = false;
                     ctx.board_at(selected_row, selected_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
-                    if (possible_moves[move_index].type == EN_PASSANT) {
+                    if (possible_moves.moves[move_index].type == EN_PASSANT) {
                         ctx.board_at(selected_row, target_col) = (Piece) {.type = EMPTY, .player = NONE, .row = selected_row, .col = selected_col, .selected = false};
-                    } else if (possible_moves[move_index].type == CASTLES_SHORT) {
+                    } else if (possible_moves.moves[move_index].type == CASTLES_SHORT) {
                         ctx.board_at(target_row, target_col - 1) = ctx.board_at(target_row, target_col + 1);
                         ctx.board_at(target_row, target_col - 1).col = target_col - 1;
                         ctx.board_at(target_row, target_col + 1) =  (Piece) {.type = EMPTY, .player = NONE, .row = target_row, .col = target_col + 1, .selected = false};
-                    } else if (possible_moves[move_index].type == CASTLES_LONG) {
+                    } else if (possible_moves.moves[move_index].type == CASTLES_LONG) {
                         ctx.board_at(target_row, target_col + 1) = ctx.board_at(target_row, A);
                         ctx.board_at(target_row, target_col + 1).col = target_col + 1;
                         ctx.board_at(target_row, A) =  (Piece) {.type = EMPTY, .player = NONE, .row = target_row, .col = A, .selected = false};
                     }
-                    ctx.last_move = possible_moves[move_index];
+                    ctx.last_move = possible_moves.moves[move_index];
+                    printf("Hi!\n");
                     ctx.turn = 1 - ctx.turn;
                     ctx.check = is_check(ctx);
                     if (ctx.check) {
@@ -846,13 +717,13 @@ int main(void)
                     ctx.board_at(selected_row, selected_col).selected = false;
                 }
                 selected_piece = false;
-                possible_moves_count = 0;
+                flush_move_buffer(&possible_moves);
             }
 
             BeginDrawing();
                 DrawBackground();
                 DrawPieces(ctx, piece_texture);
-                if (selected_piece && possible_moves_count > 0) DrawPossibleMoves(possible_moves, possible_moves_count);
+                if (selected_piece && possible_moves.count > 0) DrawPossibleMoves(possible_moves);
                 char* turn_msg = (ctx.turn == WH) ? "White to play" : "Black to play";
                 int pad = 50;
                 Vector2 turn_msg_pos = { .x = BOARD_SIZE + pad, .y = SCREEN_HEIGHT / 2 - 30};
