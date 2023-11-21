@@ -211,7 +211,6 @@ void allocate_move(Square from, Square to, MoveType type, MoveBuffer *buf)
     buf->moves[buf->count].to = to;    
     buf->moves[buf->count].type = type;
     (buf->count)++;
-    printf("Move buffer has %d moves\n", buf->count);
 }
 
 void calculate_possible_moves(Piece p, MoveBuffer *possible_moves, GameContext ctx)
@@ -525,7 +524,7 @@ void find_king(GameContext ctx, Player p, Square *king_square)
 
 bool is_check(GameContext ctx)
 {
-    MoveBuffer possible_moves;
+    MoveBuffer possible_moves = {0};
     Square king_square;
     unsigned int move_index;
     
@@ -573,7 +572,7 @@ void validate_possible_moves(Piece p, MoveBuffer *possible_moves, GameContext ct
 
 bool is_threatened(Row row, Column col, Player p, GameContext ctx)
 {
-    MoveBuffer possible_moves;
+    MoveBuffer possible_moves = {0};
     unsigned int move_index;
     for (Row r = 1; r <= 8; r++) {
         for (Column c = A; c <= H; c++) {
@@ -590,7 +589,7 @@ bool is_threatened(Row row, Column col, Player p, GameContext ctx)
 
 bool is_mate(GameContext ctx)
 {
-    MoveBuffer possible_moves;
+    MoveBuffer possible_moves = {0};
     for (Row r = 1; r <= 8; r++) {
         for (Column c = A; c <= H; c++) {
             if (ctx.board_at(r, c).player != ctx.turn) continue;
@@ -602,7 +601,6 @@ bool is_mate(GameContext ctx)
             flush_move_buffer(&possible_moves);
         }
     }
-    printf("Hi!\n");
     return true;
 }
 
@@ -621,22 +619,20 @@ int main(void)
 
     PlayMusicStream(menu_music);
 
-    // TODO: create a struct GameContext to hold all metadata
-    // including board, turn, last move, castling privileges
     bool playing = false;
     bool board_init = false;
     Row target_row, selected_row;
     Column target_col, selected_col;
     bool selected_piece = false;
     bool calculated_moves = false;
-    MoveBuffer possible_moves;
+    MoveBuffer possible_moves = {0};
     unsigned int move_index;
     float now;
     const Row back_row[2] = {1, 8};
 
+    // TODO: implement move history
     GameContext ctx;
 
-    // TODO: implement move history
     // TODO: implement promotion
     // TODO: fix checkmate screen, figure out a better way to manage the user flow
     
