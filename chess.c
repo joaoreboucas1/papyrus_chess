@@ -496,10 +496,7 @@ void validate_possible_moves(Piece p, MoveBuffer *possible_moves, GameContext ct
         // Perform the move in the next_board
         move = possible_moves->moves[i];
         piece_at_target = next_ctx.board_at(move.to.row, move.to.col);
-        next_ctx.board_at(move.to.row, move.to.col) = next_ctx.board_at(p.row, p.col);
-        next_ctx.board_at(move.to.row, move.to.col).row = move.to.row;
-        next_ctx.board_at(move.to.row, move.to.col).col = move.to.col;
-        next_ctx.board_at(p.row, p.col) = EMPTY_PIECE(p.row, p.col);
+        apply_move(move, &next_ctx);
         check = is_check(next_ctx);
         if (!check) {
             possible_moves->moves[new_count] = move;
@@ -571,6 +568,7 @@ int main(void)
     const Row back_row[2] = {1, 8};
 
     // TODO: implement move history
+    // TODO: function to revert move, this needs a move history
     GameContext ctx;
 
     // TODO: implement promotion
@@ -631,8 +629,16 @@ int main(void)
                 target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                 target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
                 if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
-                    // Update check privileges
-                    if (ctx.board_at(selected_row, selected_col).type == KING || possible_moves.moves[move_index].type == CASTLES_SHORT || possible_moves.moves[move_index].type == CASTLES_LONG) {
+                    Move move = possible_moves.moves[move_index];
+                    apply_move(move, &ctx);
+                    if (move.type == CAPTURE || move.type == EN_PASSANT) {
+                        PlaySound(capture_sound);
+                    } else {
+                        PlaySound(move_sound);
+                    }
+                    ctx.last_move = move;
+                    // Update castling privileges
+                    if (ctx.board_at(selected_row, selected_col).type == KING || move.type == CASTLES_SHORT || move.type == CASTLES_LONG) {
                         ctx.can_castle_short[ctx.turn] = false;
                         ctx.can_castle_long[ctx.turn] = false;
                     } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == A) {
@@ -640,15 +646,28 @@ int main(void)
                     } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == H) {
                         ctx.can_castle_short[ctx.turn] = false;
                     }
-                    apply_move(possible_moves.moves[move_index], &ctx);
-                    ctx.last_move = possible_moves.moves[move_index];
+                    // Promotion
+                    if (move.to.row == back_row[1 - ctx.turn] && ctx.board_at(move.to.row, move.to.col).type == PAWN) {
+                        bool selected_promotion_piece = false;
+                        while (!selected_promotion_piece) {
+                            PollInputEvents();
+                            if (IsKeyPressed(KEY_N)) {
+                                selected_promotion_piece = true;
+                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = KNIGHT, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                            } else if (IsKeyPressed(KEY_B)) {
+                                selected_promotion_piece = true;
+                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = BISHOP, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                            } else if (IsKeyPressed(KEY_R)) {
+                                selected_promotion_piece = true;
+                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = ROOK, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                            } else if (IsKeyPressed(KEY_Q)) {
+                                selected_promotion_piece = true;
+                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = QUEEN, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                            }
+                        }
+                    }
                     ctx.turn = 1 - ctx.turn;
                     ctx.check = is_check(ctx);
-                    if (possible_moves.moves[move_index].type == CAPTURE || possible_moves.moves[move_index].type == EN_PASSANT) {
-                        PlaySound(capture_sound);
-                    } else {
-                        PlaySound(move_sound);
-                    }
                     // TODO: move this from here to the drawing part of the code
                     if (ctx.check) {
                         if (is_mate(ctx)) {
