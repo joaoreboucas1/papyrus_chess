@@ -58,6 +58,7 @@ typedef struct {
     bool can_castle_short[2];
     bool can_castle_long[2];
     bool accept_move;
+    bool promotion;
 } GameContext;
 
 typedef struct {
@@ -115,6 +116,7 @@ void initialize_game(GameContext *ctx)
     ctx->can_castle_long[WH] = true;
     ctx->can_castle_long[BL] = true;
     ctx->accept_move = true;
+    ctx->promotion = false;
 }
 
 void DrawBackground()
@@ -569,6 +571,7 @@ int main(void)
     unsigned int move_index;
     float now;
     const Row back_row[2] = {1, 8};
+    Move move;
 
     // TODO: implement move history
     // TODO: function to revert move, this needs a move history
@@ -627,7 +630,7 @@ int main(void)
                     target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                     target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
                     if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
-                        Move move = possible_moves.moves[move_index];
+                        move = possible_moves.moves[move_index];
                         apply_move(move, &ctx);
                         if (move.type == CAPTURE || move.type == EN_PASSANT) {
                             PlaySound(capture_sound);
@@ -644,30 +647,18 @@ int main(void)
                         } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == H) {
                             ctx.can_castle_short[ctx.turn] = false;
                         }
-                        // Promotion
+                        
                         if (move.to.row == back_row[1 - ctx.turn] && ctx.board_at(move.to.row, move.to.col).type == PAWN) {
-                            bool selected_promotion_piece = false;
-                            while (!selected_promotion_piece) {
-                                PollInputEvents();
-                                if (IsKeyPressed(KEY_N)) {
-                                    selected_promotion_piece = true;
-                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = KNIGHT, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                                } else if (IsKeyPressed(KEY_B)) {
-                                    selected_promotion_piece = true;
-                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = BISHOP, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                                } else if (IsKeyPressed(KEY_R)) {
-                                    selected_promotion_piece = true;
-                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = ROOK, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                                } else if (IsKeyPressed(KEY_Q)) {
-                                    selected_promotion_piece = true;
-                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = QUEEN, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                                }
-                            }
+                            ctx.promotion = true;
+                            ctx.accept_move = false;
                         }
-                        ctx.turn = 1 - ctx.turn;
-                        ctx.check = is_check(ctx);
-                        if (ctx.check) {
-                            ctx.mate = is_mate(ctx);
+                        if (!ctx.promotion) {
+                            // Remember: all the things here must be done after the user chooses the promotion piece
+                            ctx.turn = 1 - ctx.turn;
+                            ctx.check = is_check(ctx);
+                            if (ctx.check) {
+                                ctx.mate = is_mate(ctx);
+                            }
                         }
                     } else {
                         ctx.board_at(selected_row, selected_col).selected = false;
@@ -677,8 +668,30 @@ int main(void)
                 }
                 if (ctx.mate) ctx.accept_move = false;
             } else {
-                // After checkmate
-                if (IsKeyPressed(KEY_ENTER)) playing = false;
+                if (ctx.mate && IsKeyPressed(KEY_ENTER)) playing = false;
+                if (ctx.promotion) {
+                    if (IsKeyPressed(KEY_Q)) {
+                        ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = QUEEN, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                        ctx.promotion = false;
+                    } else if (IsKeyPressed(KEY_R)) {
+                        ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = ROOK, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                        ctx.promotion = false;
+                    } else if (IsKeyPressed(KEY_N)) {
+                        ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = KNIGHT, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                        ctx.promotion = false;
+                    } else if (IsKeyPressed(KEY_B)) {
+                        ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = BISHOP, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                        ctx.promotion = false;
+                    }
+                    if (!ctx.promotion) {
+                        ctx.accept_move = true;
+                        ctx.turn = 1 - ctx.turn;
+                        ctx.check = is_check(ctx);
+                        if (ctx.check) {
+                            ctx.mate = is_mate(ctx);
+                        }
+                    }
+                }
             }
 
             BeginDrawing();
@@ -711,9 +724,19 @@ int main(void)
                         float y_check_msg = (ctx.turn == WH) ? SCREEN_HEIGHT / 2 + 250 : SCREEN_HEIGHT / 2 - 250;
                         Vector2 check_msg_pos = { .x = BOARD_SIZE + pad, .y = y_check_msg};
                         DrawTextEx(papyrus, check_msg, check_msg_pos, size, spacing, WHITE);
+                    } else if (ctx.promotion) {
+                        char* promotion_msgs[4] = {
+                            "Press Q for queen",
+                            "Press R for rook",
+                            "Press N for knight",
+                            "Press B for bishop"
+                        };
+                        for (size_t i = 0; i < 4; i++) {
+                            Vector2 promotion_msg_loc = { .x = BOARD_SIZE + 10, .y = SCREEN_HEIGHT / 2 + 30 * (i + 1) };
+                            DrawTextEx(papyrus, promotion_msgs[i], promotion_msg_loc, 50.0f, spacing, WHITE);
+                        }
                     }
-                }
-                
+                }                
             EndDrawing();
         }
     }
