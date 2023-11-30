@@ -576,9 +576,6 @@ int main(void)
     // TODO: implement move history
     // TODO: function to revert move, this needs a move history
     GameContext ctx;
-
-    // TODO: how to make promotion screen not freeze the rendering?
-    // TODO: fix checkmate screen, figure out a better way to manage the user flow
     
     while (!WindowShouldClose())
     {
