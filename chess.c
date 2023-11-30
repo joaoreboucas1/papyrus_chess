@@ -53,9 +53,11 @@ typedef struct {
     Piece board[8][8];
     Player turn;
     bool check;
+    bool mate;
     Move last_move;
     bool can_castle_short[2];
     bool can_castle_long[2];
+    bool accept_move;
 } GameContext;
 
 typedef struct {
@@ -107,10 +109,12 @@ void initialize_game(GameContext *ctx)
     initialize_board(ctx);
     ctx->turn = WH;
     ctx->check = false;
+    ctx->mate = false;
     ctx->can_castle_short[WH] = true;
     ctx->can_castle_short[BL] = true;
     ctx->can_castle_long[WH] = true;
     ctx->can_castle_long[BL] = true;
+    ctx->accept_move = true;
 }
 
 void DrawBackground()
@@ -557,7 +561,6 @@ int main(void)
     Music menu_music =  LoadMusicStream("assets/menu.mp3");
 
     bool playing = false;
-    bool board_init = false;
     Row target_row, selected_row;
     Column target_col, selected_col;
     bool selected_piece = false;
@@ -571,7 +574,7 @@ int main(void)
     // TODO: function to revert move, this needs a move history
     GameContext ctx;
 
-    // TODO: implement promotion
+    // TODO: how to make promotion screen not freeze the rendering?
     // TODO: fix checkmate screen, figure out a better way to manage the user flow
     
     while (!WindowShouldClose())
@@ -579,7 +582,6 @@ int main(void)
         if (!playing) {
             // Menu state
             if (!IsMusicStreamPlaying(menu_music)) PlayMusicStream(menu_music);
-            board_init = false;
             
             UpdateMusicStream(menu_music);
             now = GetTime();
@@ -587,6 +589,8 @@ int main(void)
             float alpha = (sinf(2 * PI * freq * now) + 1.0f)/2.0f;
             if (IsKeyPressed(KEY_ENTER)) {
                 playing = true;
+                initialize_game(&ctx);
+                flush_move_buffer(&possible_moves); // Just to assure that we don't have junk data from a previous game
                 StopMusicStream(menu_music);
             }
 
@@ -604,106 +608,112 @@ int main(void)
                 DrawTextEx(papyrus, press_enter_text, press_enter_text_pos, size/2, 0, tint);
             EndDrawing();
         } else {
-            // Playing state
-            if (!board_init) {
-                initialize_game(&ctx);
-                flush_move_buffer(&possible_moves); // Just to assure that we don't have junk data from a previous game
-                board_init = true;
-            }
-
-            // Read user input
-            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
-                Vector2 mouse_pos = GetMousePosition();
-                selected_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
-                selected_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-                if (selected_col >= A && selected_col <= H && selected_row >= 1 && selected_row <= 8 && ctx.board_at(selected_row, selected_col).type != EMPTY && ctx.board_at(selected_row, selected_col).player == ctx.turn) {
-                    selected_piece = true;
-                    ctx.board_at(selected_row, selected_col).selected = true;
-                    if (!calculated_moves) {
-                        calculate_possible_moves(ctx.board_at(selected_row, selected_col), &possible_moves, ctx);
-                        validate_possible_moves(ctx.board_at(selected_row, selected_col), &possible_moves, ctx);
+            if (ctx.accept_move) {
+                // Read user input
+                if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
+                    Vector2 mouse_pos = GetMousePosition();
+                    selected_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
+                    selected_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
+                    if (selected_col >= A && selected_col <= H && selected_row >= 1 && selected_row <= 8 && ctx.board_at(selected_row, selected_col).type != EMPTY && ctx.board_at(selected_row, selected_col).player == ctx.turn) {
+                        selected_piece = true;
+                        ctx.board_at(selected_row, selected_col).selected = true;
+                        if (!calculated_moves) {
+                            calculate_possible_moves(ctx.board_at(selected_row, selected_col), &possible_moves, ctx);
+                            validate_possible_moves(ctx.board_at(selected_row, selected_col), &possible_moves, ctx);
+                        }
                     }
-                }
-            } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
-                Vector2 mouse_pos = GetMousePosition();
-                target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
-                target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
-                if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
-                    Move move = possible_moves.moves[move_index];
-                    apply_move(move, &ctx);
-                    if (move.type == CAPTURE || move.type == EN_PASSANT) {
-                        PlaySound(capture_sound);
-                    } else {
-                        PlaySound(move_sound);
-                    }
-                    ctx.last_move = move;
-                    // Update castling privileges
-                    if (ctx.board_at(selected_row, selected_col).type == KING || move.type == CASTLES_SHORT || move.type == CASTLES_LONG) {
-                        ctx.can_castle_short[ctx.turn] = false;
-                        ctx.can_castle_long[ctx.turn] = false;
-                    } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == A) {
-                        ctx.can_castle_long[ctx.turn] = false;
-                    } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == H) {
-                        ctx.can_castle_short[ctx.turn] = false;
-                    }
-                    // Promotion
-                    if (move.to.row == back_row[1 - ctx.turn] && ctx.board_at(move.to.row, move.to.col).type == PAWN) {
-                        bool selected_promotion_piece = false;
-                        while (!selected_promotion_piece) {
-                            PollInputEvents();
-                            if (IsKeyPressed(KEY_N)) {
-                                selected_promotion_piece = true;
-                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = KNIGHT, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                            } else if (IsKeyPressed(KEY_B)) {
-                                selected_promotion_piece = true;
-                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = BISHOP, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                            } else if (IsKeyPressed(KEY_R)) {
-                                selected_promotion_piece = true;
-                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = ROOK, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
-                            } else if (IsKeyPressed(KEY_Q)) {
-                                selected_promotion_piece = true;
-                                ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = QUEEN, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
+                    Vector2 mouse_pos = GetMousePosition();
+                    target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
+                    target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
+                    if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
+                        Move move = possible_moves.moves[move_index];
+                        apply_move(move, &ctx);
+                        if (move.type == CAPTURE || move.type == EN_PASSANT) {
+                            PlaySound(capture_sound);
+                        } else {
+                            PlaySound(move_sound);
+                        }
+                        ctx.last_move = move;
+                        // Update castling privileges
+                        if (ctx.board_at(selected_row, selected_col).type == KING || move.type == CASTLES_SHORT || move.type == CASTLES_LONG) {
+                            ctx.can_castle_short[ctx.turn] = false;
+                            ctx.can_castle_long[ctx.turn] = false;
+                        } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == A) {
+                            ctx.can_castle_long[ctx.turn] = false;
+                        } else if (ctx.board_at(selected_row, selected_col).type == ROOK && selected_row == back_row[ctx.turn] && selected_col == H) {
+                            ctx.can_castle_short[ctx.turn] = false;
+                        }
+                        // Promotion
+                        if (move.to.row == back_row[1 - ctx.turn] && ctx.board_at(move.to.row, move.to.col).type == PAWN) {
+                            bool selected_promotion_piece = false;
+                            while (!selected_promotion_piece) {
+                                PollInputEvents();
+                                if (IsKeyPressed(KEY_N)) {
+                                    selected_promotion_piece = true;
+                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = KNIGHT, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                                } else if (IsKeyPressed(KEY_B)) {
+                                    selected_promotion_piece = true;
+                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = BISHOP, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                                } else if (IsKeyPressed(KEY_R)) {
+                                    selected_promotion_piece = true;
+                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = ROOK, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                                } else if (IsKeyPressed(KEY_Q)) {
+                                    selected_promotion_piece = true;
+                                    ctx.board_at(move.to.row, move.to.col) = (Piece) {.type = QUEEN, .row = move.to.row, .col = move.to.col, .player = ctx.turn};
+                                }
                             }
                         }
-                    }
-                    ctx.turn = 1 - ctx.turn;
-                    ctx.check = is_check(ctx);
-                    // TODO: move this from here to the drawing part of the code
-                    if (ctx.check) {
-                        if (is_mate(ctx)) {
-                            BeginDrawing();
-                                char* mate_msg = (ctx.turn == WH) ? "Checkmate, black wins!" : "Checkmate, white wins!";
-                                Vector2 mate_msg_pos = { .x = BOARD_SIZE, .y = SCREEN_HEIGHT / 2 - 30};
-                                DrawTextEx(papyrus, mate_msg, mate_msg_pos, 100.0f, 0.0f, WHITE);
-                            EndDrawing();
-                            playing = false;
-                            WaitTime(6.0f);
+                        ctx.turn = 1 - ctx.turn;
+                        ctx.check = is_check(ctx);
+                        if (ctx.check) {
+                            ctx.mate = is_mate(ctx);
                         }
+                    } else {
+                        ctx.board_at(selected_row, selected_col).selected = false;
                     }
-                } else {
-                    ctx.board_at(selected_row, selected_col).selected = false;
+                    selected_piece = false;
+                    flush_move_buffer(&possible_moves);
                 }
-                selected_piece = false;
-                flush_move_buffer(&possible_moves);
+                if (ctx.mate) ctx.accept_move = false;
+            } else {
+                // After checkmate
+                if (IsKeyPressed(KEY_ENTER)) playing = false;
             }
 
             BeginDrawing();
                 DrawBackground();
                 DrawPieces(ctx, piece_texture);
-                if (selected_piece && possible_moves.count > 0) DrawPossibleMoves(possible_moves);
-                char* turn_msg = (ctx.turn == WH) ? "White to play" : "Black to play";
-                int pad = 50;
-                Vector2 turn_msg_pos = { .x = BOARD_SIZE + pad, .y = SCREEN_HEIGHT / 2 - 30};
-                float size = 60.0f;
-                float spacing = 5.0f;
-                DrawTextEx(papyrus, turn_msg, turn_msg_pos, size, spacing, WHITE);
-                if (ctx.check) {
-                    char* check_msg = "In check";
-                    pad = 100;
-                    float y_check_msg = (ctx.turn == WH) ? SCREEN_HEIGHT / 2 + 250 : SCREEN_HEIGHT / 2 - 250;
-                    Vector2 check_msg_pos = { .x = BOARD_SIZE + pad, .y = y_check_msg};
-                    DrawTextEx(papyrus, check_msg, check_msg_pos, size, spacing, WHITE);
+                if (ctx.mate) {
+                    char* win_msg = (ctx.turn == WH) ? "Black wins!" : "White wins!";
+                    int pad = 50;
+                    Vector2 win_msg_pos = { .x = BOARD_SIZE + pad, .y = SCREEN_HEIGHT / 2 - 30};
+                    float size = 60.0f;
+                    float spacing = 5.0f;
+                    DrawTextEx(papyrus, win_msg, win_msg_pos, size, spacing, WHITE);
+                    char* prompt = "Press ENTER to go";
+                    char* prompt2 = "back to menu";
+                    Vector2 prompt_pos = { .x = BOARD_SIZE + 10, .y = SCREEN_HEIGHT / 2 + 150};
+                    Vector2 prompt_pos2 = { .x = BOARD_SIZE + 10, .y = SCREEN_HEIGHT / 2 + 200};
+                    DrawTextEx(papyrus, prompt, prompt_pos, 50.0f, spacing, WHITE);
+                    DrawTextEx(papyrus, prompt2, prompt_pos2, 50.0f, spacing, WHITE);
+                } else {
+                    if (selected_piece && possible_moves.count > 0) DrawPossibleMoves(possible_moves);
+                    char* turn_msg = (ctx.turn == WH) ? "White to play" : "Black to play";
+                    int pad = 50;
+                    Vector2 turn_msg_pos = { .x = BOARD_SIZE + pad, .y = SCREEN_HEIGHT / 2 - 30};
+                    float size = 60.0f;
+                    float spacing = 5.0f;
+                    DrawTextEx(papyrus, turn_msg, turn_msg_pos, size, spacing, WHITE);
+                    if (ctx.check) {
+                        char* check_msg = "In check";
+                        pad = 100;
+                        float y_check_msg = (ctx.turn == WH) ? SCREEN_HEIGHT / 2 + 250 : SCREEN_HEIGHT / 2 - 250;
+                        Vector2 check_msg_pos = { .x = BOARD_SIZE + pad, .y = y_check_msg};
+                        DrawTextEx(papyrus, check_msg, check_msg_pos, size, spacing, WHITE);
+                    }
                 }
+                
             EndDrawing();
         }
     }
