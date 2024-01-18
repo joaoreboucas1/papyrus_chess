@@ -556,6 +556,9 @@ int main(void)
     // TODO: figure out icon format for SetWindowIcon(Image image)
     SetTargetFPS(60);
 
+    // TODO: Maybe create a struct `GameAssets` to capsule all of this and 
+    // a function `RenderGameState(GameContext ctx, GameAssets assets)`
+    // and maybe even `GameAssets LoadGameAssets(void)`
     Texture2D piece_texture = LoadTexture("assets/pieces.png");
     Font papyrus = LoadFont("assets/papyrus.ttf");
     Sound move_sound = LoadSound("assets/move.mp3");
@@ -576,6 +579,12 @@ int main(void)
     // TODO: implement move history
     // TODO: function to revert move, this needs a move history
     GameContext ctx;
+    #define MOVE_HISTORY_CAP 200
+    #define CTX_HISTORY_CAP 201
+    GameContext ctx_history[CTX_HISTORY_CAP];
+    unsigned int current_move = 0;
+
+
     
     while (!WindowShouldClose())
     {
@@ -590,6 +599,8 @@ int main(void)
             if (IsKeyPressed(KEY_ENTER)) {
                 playing = true;
                 initialize_game(&ctx);
+                current_move = 0;
+                ctx_history[current_move] = ctx;
                 flush_move_buffer(&possible_moves); // Just to assure that we don't have junk data from a previous game
                 StopMusicStream(menu_music);
             }
@@ -608,6 +619,7 @@ int main(void)
                 DrawTextEx(papyrus, press_enter_text, press_enter_text_pos, size/2, 0, tint);
             EndDrawing();
         } else {
+            // Playing state
             if (ctx.accept_move) {
                 // Read user input
                 if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !selected_piece) {
@@ -623,6 +635,7 @@ int main(void)
                         }
                     }
                 } else if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && selected_piece) {
+                    // Process user input
                     Vector2 mouse_pos = GetMousePosition();
                     target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                     target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
@@ -652,6 +665,11 @@ int main(void)
                         if (!ctx.promotion) {
                             // Remember: all the things here must be done after the user chooses the promotion piece
                             ctx.turn = 1 - ctx.turn;
+                            // Register context in history
+                            if (current_move < MOVE_HISTORY_CAP) {
+                                current_move += 1;
+                                ctx_history[current_move] = ctx;
+                            }
                             ctx.check = is_check(ctx);
                             if (ctx.check) {
                                 ctx.mate = is_mate(ctx);
@@ -662,9 +680,14 @@ int main(void)
                     }
                     selected_piece = false;
                     flush_move_buffer(&possible_moves);
+                } else if (IsKeyPressed(KEY_B)) {
+                    // Revert move
+                    if (current_move > 0) current_move -= 1;
+                    ctx = ctx_history[current_move];
                 }
                 if (ctx.mate) ctx.accept_move = false;
             } else {
+                // Handle cases where we don't accept standard user input
                 if (ctx.mate && IsKeyPressed(KEY_ENTER)) playing = false;
                 if (ctx.promotion) {
                     if (IsKeyPressed(KEY_Q)) {
@@ -733,7 +756,7 @@ int main(void)
                             DrawTextEx(papyrus, promotion_msgs[i], promotion_msg_loc, 50.0f, spacing, WHITE);
                         }
                     }
-                }                
+                }
             EndDrawing();
         }
     }
