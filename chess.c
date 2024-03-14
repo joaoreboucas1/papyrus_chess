@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <string.h>
 
 #define BOARD_SIZE 800
 #define SQUARE_SIZE (BOARD_SIZE/8)
@@ -137,6 +138,7 @@ void DrawBackground()
 void DrawPieces(GameContext ctx, Texture2D texture)
 {
     // TODO: functions to convert between (row, col) and (screen_x, screen_y)
+    // TODO: accept `BoardRect`
     int pad_x;
     int pad_y;
     Rectangle rec;
@@ -549,6 +551,78 @@ bool is_mate(GameContext ctx)
     return true;
 }
 
+// Render Functions
+void DrawTextCentered_(const char* text, float x, float y, int font_size, Font font)
+{
+    Vector2 title_render_sizes = MeasureTextEx(font, text, font_size, 0);
+    Vector2 title_pos = { .x = x - title_render_sizes.x/2, .y = y - title_render_sizes.y/2};
+    DrawTextEx(font, text, title_pos, font_size, 0, WHITE);
+}
+#define DrawTextCentered(text, x, y, font_size) DrawTextCentered_(text, x, y, font_size, papyrus)
+
+void DrawButtonWithText_(Rectangle button, const char* text, int font_size, Color color, Font font)
+{
+    DrawRectangleRec(button, color);
+    DrawTextCentered_(text, button.x + button.width/2, button.y + button.height/2, font_size, font);
+}
+#define DrawButtonWithText(button, text, font_size, color) DrawButtonWithText_(button, text, font_size, color, papyrus)
+
+void DrawTextInRect(Rectangle r, const char* text, int font_size, Font font)
+{
+    const char* begin = text;
+    const char* end = text;
+    char word[256];
+    char line[1024];
+    size_t line_len = 0;
+    line[line_len] = '\0';
+    size_t lines = 0;
+    Vector2 measures;
+    size_t iters = 0;
+    do {
+        iters++;
+        // Trim left
+        while (*begin == ' ') begin++;
+        if (*begin == '\0') return;
+        end = begin;
+
+        // Find next space
+        while (*end != ' ' && *end != '\0') end++;
+
+        if (*end == '\0') printf("Hit the end of string!\n");
+
+        // Build string
+        for (const char* c = begin; c < end; c++) {
+            word[c - begin] = *c;
+        }
+        word[end - begin] = '\0';
+
+        // Measure current line and word separately
+        Vector2 measures_line = MeasureTextEx(font, line, font_size, 0);
+        Vector2 measures_word = MeasureTextEx(font, word, font_size, 0);
+
+        if (measures_line.x + measures_word.x < r.width || *end == '\0') {
+            // Append word to line
+            for (size_t i = 0; i < (end - begin); i++) {
+                line[line_len + i] = word[i];
+            }
+            line[line_len + (end - begin)] = ' ';
+            line_len += (end - begin + 1);
+            line[line_len] = '\0';
+            // Go to next word
+            begin = end;
+        }
+        if (measures_line.x + measures_word.x > r.width || *end == '\0') {
+            // Draw line
+            DrawTextEx(font, line, (Vector2) { r.x, r.y + lines*measures_line.y }, font_size, 0, WHITE);
+            lines += 1;
+
+            // Flush word
+            line_len = 0;
+            line[line_len] = '\0';
+        }
+    } while (*end != '\0');
+}
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
@@ -565,7 +639,10 @@ int main(void)
     Sound capture_sound = LoadSound("assets/capture.mp3");
     Music menu_music =  LoadMusicStream("assets/menu.mp3");
 
+    // Program metadata to know what is the program state
     bool playing = false;
+    bool tutorial = false;
+
     Row target_row, selected_row;
     Column target_col, selected_col;
     bool selected_piece = false;
@@ -586,38 +663,91 @@ int main(void)
 
 
     
-    while (!WindowShouldClose())
-    {
+    while (!WindowShouldClose()) {
         if (!playing) {
             // Menu state
             if (!IsMusicStreamPlaying(menu_music)) PlayMusicStream(menu_music);
-            
             UpdateMusicStream(menu_music);
-            now = GetTime();
-            const float freq = 1.0f/4; // In seconds
-            float alpha = (sinf(2 * PI * freq * now) + 1.0f)/2.0f;
-            if (IsKeyPressed(KEY_ENTER)) {
-                playing = true;
-                initialize_game(&ctx);
-                current_move = 0;
-                ctx_history[current_move] = ctx;
-                flush_move_buffer(&possible_moves); // Just to assure that we don't have junk data from a previous game
-                StopMusicStream(menu_music);
-            }
 
+            // Draw menu screen
             BeginDrawing();
                 ClearBackground(BROWN);
-                Color tint = ColorAlpha(WHITE, alpha);
-                char* title = "Papyrus Chess";
-                int size = 160;
-                int offset_x = MeasureText(title, size);
-                Vector2 title_pos = { .x = SCREEN_WIDTH / 2 - offset_x / 4, .y = SCREEN_HEIGHT / 2 - 120};
-                DrawTextEx(papyrus, title, title_pos, size, 0, WHITE);
-                char* press_enter_text = "Press ENTER to start playing!";
-                offset_x = MeasureText(press_enter_text, size/2);
-                Vector2 press_enter_text_pos = { .x = SCREEN_WIDTH / 2 - offset_x / 4, .y = SCREEN_HEIGHT / 2 + 120};
-                DrawTextEx(papyrus, press_enter_text, press_enter_text_pos, size/2, 0, tint);
+                
+                int font_size = 160;
+                float title_up_offset = 180.0f;
+                DrawTextCentered_("Papyrus Chess", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - title_up_offset, font_size, papyrus);
+
+                // TODO: implement button functionality
+                float button_width = 500.0f;
+                float button_height = 150.0f;
+                float button_down_offset = 40.0f;
+                Rectangle play_button = {
+                    .x = SCREEN_WIDTH/2 - button_width/2,
+                    .y = SCREEN_HEIGHT/2 - button_height/2 + button_down_offset,
+                    .width = button_width,
+                    .height = button_height
+                };
+                DrawButtonWithText(play_button, "Play", 80, DARKBROWN);
+
+                button_down_offset += button_height + 40.0f;
+                Rectangle tutorial_button = {
+                    .x = SCREEN_WIDTH/2 - button_width/2,
+                    .y = SCREEN_HEIGHT/2 - button_height/2 + button_down_offset,
+                    .width = button_width,
+                    .height = button_height
+                };
+                DrawButtonWithText(tutorial_button, "How to play", 80, DARKBROWN);
+
+                const float tutorial_box_width = SCREEN_WIDTH*0.7;
+                const float tutorial_box_height = SCREEN_HEIGHT*0.85;
+                const Rectangle tutorial_box = {
+                    .x = SCREEN_WIDTH/2 - tutorial_box_width/2,
+                    .y = SCREEN_HEIGHT/2 - tutorial_box_height/2,
+                    .width = tutorial_box_width,
+                    .height = tutorial_box_height,
+                };
+                const float tutorial_close_button_padding = tutorial_box.width*0.05;
+                    Rectangle tutorial_close_button = {
+                        .x = tutorial_box.x + tutorial_close_button_padding,
+                        .y = tutorial_box.y + tutorial_close_button_padding,
+                        .width = 150,
+                        .height = 100
+                };
+                if (tutorial) {
+                    // Draw tutorial box
+                    DrawRectangleRec(tutorial_box, DARKBROWN);
+                    DrawButtonWithText(tutorial_close_button, "Close", 80, DARKGRAY);
+                    Vector2 text_padding = { tutorial_box.x*0.1, tutorial_box.y*0.1 };
+                    static const char* text = "When it's your turn, drag and drop pieces to the squares you want to place them. Visual indicators will show where you can place the piece. Alternate turns with a friend!";
+                    Rectangle text_area = {
+                        .x = tutorial_box.x + tutorial_close_button_padding,
+                        .y = tutorial_close_button.y + tutorial_close_button.height + tutorial_close_button_padding,
+                        .width = tutorial_box_width - 2*tutorial_close_button_padding,
+                        .height = tutorial_box_height - tutorial_close_button.height - 3*tutorial_close_button_padding
+                    };
+                    DrawRectangleRec(text_area, DARKBROWN);
+                    DrawTextInRect(text_area, text, 60, papyrus);
+                }
             EndDrawing();
+
+            // Handle button events
+            Vector2 mouse = GetMousePosition();
+            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                if (!tutorial && CheckCollisionPointRec(mouse, play_button)) {
+                    playing = true;
+                    initialize_game(&ctx);
+                    current_move = 0;
+                    ctx_history[current_move] = ctx;
+                    flush_move_buffer(&possible_moves); // Just to assure that we don't have junk data from a previous game
+                    StopMusicStream(menu_music);
+                }
+                if (!tutorial) {
+                    tutorial = CheckCollisionPointRec(mouse, tutorial_button);
+                }
+                if (tutorial) {
+                    tutorial = !CheckCollisionPointRec(mouse, tutorial_close_button);
+                }
+            }
         } else {
             // Playing state
             if (ctx.accept_move) {
@@ -714,6 +844,7 @@ int main(void)
                 }
             }
 
+            // Render playing state
             BeginDrawing();
                 DrawBackground();
                 DrawPieces(ctx, piece_texture);

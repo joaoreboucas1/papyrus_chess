@@ -14,7 +14,7 @@ The developers who want to build the project by themselves must have [`raylib`](
 $ gcc -o chess chess.c -lraylib -mwindows
 ```
 
-**NOTE:** the `-mwindows` flag suppresses the terminal from opening every time the application is run. For debugging purposes, this flag may be omitted during compilation. Check [this issue](https://github.com/raysan5/raylib/issues/324) for building with MSVC.
+**NOTE:** the `-mwindows` flag prevents the terminal from opening every time the application is run. For debugging purposes, this flag may be omitted during compilation. Check [this issue](https://github.com/raysan5/raylib/issues/324) for building with MSVC.
 
 The code should be cross-platform so it should compile in both Windows and Linux.
 
@@ -22,6 +22,7 @@ The code should be cross-platform so it should compile in both Windows and Linux
 
 Just run the executable.
 
-## TODO
+## Future plans:
 
-Figure out a way to ship the application, since the font and assets are loaded dynamically.
+- Figure out a way to ship the application, since the font and assets are loaded dynamically.
+- Implement chess bot
