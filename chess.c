@@ -623,6 +623,74 @@ void DrawTextInRect(Rectangle r, const char* text, int font_size, Font font)
     } while (*end != '\0');
 }
 
+bool is_move_ambiguous(Move move, GameContext ctx, Square* other_piece_square)
+{
+    // Find out if the move is ambiguous
+    Piece piece = ctx.board_at(move.from.row, move.from.col);
+    bool ambiguous = false;
+    MoveBuffer buf;
+    unsigned int index;
+    if (piece.type != PAWN && piece.type != QUEEN) {
+        for (size_t row = 1; row <= 8; row++) {
+            for (size_t col = A; col <= H; col++) {
+                if (row == piece.row && col == piece.col) continue;
+                Piece other_piece = ctx.board_at(row, col);
+                if (other_piece.type != piece.type) continue;
+                calculate_possible_moves(other_piece, &buf, ctx);
+                if (is_possible(move.to.row, move.to.col, buf, &index)) {
+                    *other_piece_square = (Square) { .row = row, .col = col };
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+void algebraic_notation(Move move, GameContext ctx, char* notation)
+{
+    size_t index = 0;
+    Piece piece = ctx.board_at(move.from.row, move.from.col);
+    if (piece.type == PAWN && move.type == CAPTURE) {
+        notation[index++] = 'a' + move.from.col - 1;
+    } else if (piece.type == KNIGHT) {
+        notation[index++] = 'N';
+    } else if (piece.type == BISHOP) {
+        notation[index++] = 'B';
+    } else if (piece.type == ROOK) {
+        notation[index++] = 'R';
+    } else if (piece.type == KING) {
+        notation[index++] = 'K';
+    } else if (piece.type == QUEEN) {
+        notation[index++] = 'Q';
+    }
+
+    Square other_piece_square;
+    bool ambiguous = is_move_ambiguous(move, ctx, &other_piece_square);
+
+    if (ambiguous) {
+        if (piece.col == other_piece_square.col) {
+            notation[index++] = '1' + piece.row - 1;
+        } else {
+            notation[index++] = 'a' + piece.col - 1;
+        }
+    }
+
+    if (move.type == CAPTURE) notation[index++] = 'x';
+
+    notation[index++] = 'a' + move.to.col - 1;
+    notation[index++] = '1' + move.to.row - 1;  
+
+    // TODO: since we are passing ctx by value do we need to copy?
+    GameContext next_ctx = ctx;
+    apply_move(move, &next_ctx);
+    if (is_check(next_ctx)) {
+        notation[index++] = '+';
+    }
+
+    notation[index] = '\0';
+}
+
 int main(void)
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
@@ -635,6 +703,7 @@ int main(void)
     // and maybe even `GameAssets LoadGameAssets(void)`
     Texture2D piece_texture = LoadTexture("assets/pieces.png");
     Font papyrus = LoadFont("assets/papyrus.ttf");
+    SetTextureFilter(papyrus.texture, TEXTURE_FILTER_BILINEAR);
     Sound move_sound = LoadSound("assets/move.mp3");
     Sound capture_sound = LoadSound("assets/capture.mp3");
     Music menu_music =  LoadMusicStream("assets/menu.mp3");
@@ -643,13 +712,13 @@ int main(void)
     bool playing = false;
     bool tutorial = false;
 
+    // Variables related to chess game
     Row target_row, selected_row;
     Column target_col, selected_col;
     bool selected_piece = false;
     bool calculated_moves = false;
     MoveBuffer possible_moves = {0};
     unsigned int move_index;
-    float now;
     const Row back_row[2] = {1, 8};
     Move move;
 
@@ -660,8 +729,6 @@ int main(void)
     #define CTX_HISTORY_CAP 201
     GameContext ctx_history[CTX_HISTORY_CAP];
     unsigned int current_move = 0;
-
-
     
     while (!WindowShouldClose()) {
         if (!playing) {
@@ -771,6 +838,9 @@ int main(void)
                     target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
                     if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
                         move = possible_moves.moves[move_index];
+                        char notation[7];
+                        algebraic_notation(move, ctx, notation);
+                        printf("%s\n", notation);
                         apply_move(move, &ctx);
                         if (move.type == CAPTURE || move.type == EN_PASSANT) {
                             PlaySound(capture_sound);
