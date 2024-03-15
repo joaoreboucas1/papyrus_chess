@@ -577,9 +577,7 @@ void DrawTextInRect(Rectangle r, const char* text, int font_size, Font font)
     line[line_len] = '\0';
     size_t lines = 0;
     Vector2 measures;
-    size_t iters = 0;
     do {
-        iters++;
         // Trim left
         while (*begin == ' ') begin++;
         if (*begin == '\0') return;
@@ -587,8 +585,6 @@ void DrawTextInRect(Rectangle r, const char* text, int font_size, Font font)
 
         // Find next space
         while (*end != ' ' && *end != '\0') end++;
-
-        if (*end == '\0') printf("Hit the end of string!\n");
 
         // Build string
         for (const char* c = begin; c < end; c++) {
@@ -628,19 +624,20 @@ bool is_move_ambiguous(Move move, GameContext ctx, Square* other_piece_square)
     // Find out if the move is ambiguous
     Piece piece = ctx.board_at(move.from.row, move.from.col);
     bool ambiguous = false;
-    MoveBuffer buf;
+    MoveBuffer buf = {0};
     unsigned int index;
-    if (piece.type != PAWN && piece.type != QUEEN) {
+    if (piece.type != PAWN && piece.type != KING) {
         for (size_t row = 1; row <= 8; row++) {
             for (size_t col = A; col <= H; col++) {
                 if (row == piece.row && col == piece.col) continue;
                 Piece other_piece = ctx.board_at(row, col);
-                if (other_piece.type != piece.type) continue;
+                if (other_piece.player != piece.player || other_piece.type != piece.type) continue;
                 calculate_possible_moves(other_piece, &buf, ctx);
                 if (is_possible(move.to.row, move.to.col, buf, &index)) {
                     *other_piece_square = (Square) { .row = row, .col = col };
                     return true;
                 }
+                flush_move_buffer(&buf);
             }
         }
     }
@@ -649,6 +646,14 @@ bool is_move_ambiguous(Move move, GameContext ctx, Square* other_piece_square)
 
 void algebraic_notation(Move move, GameContext ctx, char* notation)
 {
+    if (move.type == CASTLES_SHORT) {
+        notation = "o-o";
+        return;
+    } else if (move.type == CASTLES_LONG) {
+        notation = "o-o-o";
+        return;
+    }
+    
     size_t index = 0;
     Piece piece = ctx.board_at(move.from.row, move.from.col);
     if (piece.type == PAWN && move.type == CAPTURE) {
@@ -681,10 +686,11 @@ void algebraic_notation(Move move, GameContext ctx, char* notation)
     notation[index++] = 'a' + move.to.col - 1;
     notation[index++] = '1' + move.to.row - 1;  
 
-    // TODO: since we are passing ctx by value do we need to copy?
-    GameContext next_ctx = ctx;
-    apply_move(move, &next_ctx);
-    if (is_check(next_ctx)) {
+    // TODO: make sure this is a good idea
+    // TODO: check notation is not working
+    apply_move(move, &ctx);
+    ctx.turn = 1 - ctx.turn;
+    if (is_check(ctx)) {
         notation[index++] = '+';
     }
 
@@ -839,6 +845,7 @@ int main(void)
                     if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
                         move = possible_moves.moves[move_index];
                         char notation[7];
+                        // TODO: algebraic notation breaks on move Nf6
                         algebraic_notation(move, ctx, notation);
                         printf("%s\n", notation);
                         apply_move(move, &ctx);
@@ -849,6 +856,7 @@ int main(void)
                         }
                         ctx.last_move = move;
                         // Update castling privileges
+                        // TODO: maybe this context updating should be moved to `apply_move`?
                         if (ctx.board_at(selected_row, selected_col).type == KING || move.type == CASTLES_SHORT || move.type == CASTLES_LONG) {
                             ctx.can_castle_short[ctx.turn] = false;
                             ctx.can_castle_long[ctx.turn] = false;
@@ -862,6 +870,7 @@ int main(void)
                             ctx.promotion = true;
                             ctx.accept_move = false;
                         }
+                        
                         if (!ctx.promotion) {
                             // Remember: all the things here must be done after the user chooses the promotion piece
                             ctx.turn = 1 - ctx.turn;
