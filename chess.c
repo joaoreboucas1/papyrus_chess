@@ -60,6 +60,7 @@ typedef struct {
     bool can_castle_long[2];
     bool accept_move;
     bool promotion;
+    size_t moves;
 } GameContext;
 
 typedef struct {
@@ -118,6 +119,7 @@ void initialize_game(GameContext *ctx)
     ctx->can_castle_long[BL] = true;
     ctx->accept_move = true;
     ctx->promotion = false;
+    ctx->moves = 0;
 }
 
 void DrawBackground()
@@ -717,6 +719,7 @@ int main(void)
     // Program metadata to know what is the program state
     bool playing = false;
     bool tutorial = false;
+    char notation[7];
 
     // Variables related to chess game
     Row target_row, selected_row;
@@ -843,11 +846,9 @@ int main(void)
                     target_col = ((int) mouse_pos.x) / SQUARE_SIZE + 1;
                     target_row = 8 - ((int) mouse_pos.y) / SQUARE_SIZE;
                     if (target_col >= A && target_col <= H && target_row >= 1 && target_row <= 8 && is_possible(target_row, target_col, possible_moves, &move_index)) {
+                        ctx.moves += 1;
                         move = possible_moves.moves[move_index];
-                        char notation[7];
-                        // TODO: algebraic notation breaks on move Nf6
                         algebraic_notation(move, ctx, notation);
-                        printf("%s\n", notation);
                         apply_move(move, &ctx);
                         if (move.type == CAPTURE || move.type == EN_PASSANT) {
                             PlaySound(capture_sound);
@@ -942,12 +943,24 @@ int main(void)
                     DrawTextEx(papyrus, prompt2, prompt_pos2, 50.0f, spacing, WHITE);
                 } else {
                     if (selected_piece && possible_moves.count > 0) DrawPossibleMoves(possible_moves);
+                    char last_move_msg[64];
+                    if (ctx.turn == WH){
+                        strcpy(last_move_msg, "Black played ");
+                    } else {
+                        strcpy(last_move_msg, "White played ");
+                    }
+                    strcpy(&last_move_msg[13], notation);
                     char* turn_msg = (ctx.turn == WH) ? "White to play" : "Black to play";
                     int pad = 50;
-                    Vector2 turn_msg_pos = { .x = BOARD_SIZE + pad, .y = SCREEN_HEIGHT / 2 - 30};
+                    Vector2 turn_msg_pos = { .x = BOARD_SIZE + 1.3*pad, .y = 0.85*SCREEN_HEIGHT};
+                    Vector2 last_move_msg_pos = { .x = BOARD_SIZE + 0.8*pad, .y = 0.75*SCREEN_HEIGHT};
                     float size = 60.0f;
                     float spacing = 5.0f;
+                    if (ctx.moves > 0) {
+                        DrawTextEx(papyrus, last_move_msg, last_move_msg_pos, size, spacing, WHITE);
+                    }
                     DrawTextEx(papyrus, turn_msg, turn_msg_pos, size, spacing, WHITE);
+
                     if (ctx.check) {
                         char* check_msg = "In check";
                         pad = 100;
