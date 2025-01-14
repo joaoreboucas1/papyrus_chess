@@ -578,7 +578,6 @@ void DrawTextInRect(Rectangle r, const char* text, int font_size, Font font)
     size_t line_len = 0;
     line[line_len] = '\0';
     size_t lines = 0;
-    Vector2 measures;
     do {
         // Trim left
         while (*begin == ' ') begin++;
@@ -600,7 +599,7 @@ void DrawTextInRect(Rectangle r, const char* text, int font_size, Font font)
 
         if (measures_line.x + measures_word.x < r.width || *end == '\0') {
             // Append word to line
-            for (size_t i = 0; i < (end - begin); i++) {
+            for (size_t i = 0; i < (size_t) (end - begin); i++) {
                 line[line_len + i] = word[i];
             }
             line[line_len + (end - begin)] = ' ';
@@ -625,13 +624,12 @@ bool is_move_ambiguous(Move move, GameContext ctx, Square* other_piece_square)
 {
     // Find out if the move is ambiguous
     Piece piece = ctx.board_at(move.from.row, move.from.col);
-    bool ambiguous = false;
     MoveBuffer buf = {0};
     unsigned int index;
     if (piece.type != PAWN && piece.type != KING) {
         for (size_t row = 1; row <= 8; row++) {
             for (size_t col = A; col <= H; col++) {
-                if (row == piece.row && col == piece.col) continue;
+                if (row == (size_t) piece.row && col == (size_t) piece.col) continue;
                 Piece other_piece = ctx.board_at(row, col);
                 if (other_piece.player != piece.player || other_piece.type != piece.type) continue;
                 calculate_possible_moves(other_piece, &buf, ctx);
@@ -793,7 +791,6 @@ int main(void)
                     // Draw tutorial box
                     DrawRectangleRec(tutorial_box, DARKBROWN);
                     DrawButtonWithText(tutorial_close_button, "Close", 80, DARKGRAY);
-                    Vector2 text_padding = { tutorial_box.x*0.1, tutorial_box.y*0.1 };
                     static const char* text = "When it's your turn, drag and drop pieces to the squares you want to place them. Visual indicators will show where you can place the piece. Alternate turns with a friend!";
                     Rectangle text_area = {
                         .x = tutorial_box.x + tutorial_close_button_padding,

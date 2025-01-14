@@ -11,10 +11,10 @@ Papyrus chess is an *antique*-themed (i.e. ugly) chess program.
 The developers who want to build the project by themselves must have [`raylib`](https://www.raylib.com/index.html) installed. The compilation process is usual:
 
 ```console
-$ gcc -o chess chess.c -lraylib -mwindows
+$ gcc -o chess chess.c -IC:\raylib\raylib\src\ -LC:\raylib\raylib\src\ -lraylib -lgdi32 -lwinmm
 ```
 
-**NOTE:** the `-mwindows` flag prevents the terminal from opening every time the application is run. For debugging purposes, this flag may be omitted during compilation. Check [this issue](https://github.com/raysan5/raylib/issues/324) for building with MSVC.
+**NOTE:** Add the `-mwindows` flag to prevent the terminal from opening every time the application is run (release mode). Check [this issue](https://github.com/raysan5/raylib/issues/324) for building with MSVC without terminal.
 
 The code should be cross-platform so it should compile in both Windows and Linux.
 
